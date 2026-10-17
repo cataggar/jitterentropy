@@ -76,18 +76,16 @@ const BuildOptions = struct {
 pub fn build(b: *std.Build) void {
     var target = b.standardTargetOptions(.{});
     if (target.query.isNative() and target.result.os.tag == .linux and target.result.isGnuLibC()) {
-        if (std.zig.system.resolveTargetQuery(b.graph.io, .{ .os_version_min = .{ .none = {} } })) |real_host| {
-            if (real_host.os.version_range.linux.glibc.order(target.result.os.version_range.linux.glibc) == .lt) {
-                target = b.resolveTargetQuery(.{
-                    .cpu_arch = real_host.cpu.arch,
-                    .cpu_model = .native,
-                    .os_tag = .linux,
-                    .abi = real_host.abi,
-                    .glibc_version = real_host.os.version_range.linux.glibc,
-                    .dynamic_linker = real_host.dynamic_linker,
-                });
-            }
-        } else |_| {}
+        const host_glibc = detectHostGnuLibCVersion(b, target.result);
+        if (host_glibc.order(.{ .major = 2, .minor = 31, .patch = 0 }) == .lt) {
+            target = b.resolveTargetQuery(.{
+                .cpu_arch = target.result.cpu.arch,
+                .cpu_model = .native,
+                .os_tag = .linux,
+                .abi = target.result.abi,
+                .glibc_version = host_glibc,
+            });
+        }
     }
     const optimize = b.standardOptimizeOption(.{});
 
@@ -1284,6 +1282,35 @@ fn applyTestEnv(run: *std.Build.Step.Run, tsan_options: ?[]const u8) void {
     }
 }
 
+fn detectHostGnuLibCVersion(b: *std.Build, host: std.Target) std.SemanticVersion {
+    if (std.process.run(b.allocator, b.graph.io, .{
+        .argv = &.{ "getconf", "GNU_LIBC_VERSION" },
+    })) |res| {
+        if (res.term == .exited and res.term.exited == 0) {
+            const out = std.mem.trim(u8, res.stdout, " \t\r\n");
+            if (std.mem.startsWith(u8, out, "glibc ")) {
+                if (std.Target.Query.parseVersion(out["glibc ".len..])) |ver| {
+                    return ver;
+                } else |_| {}
+            }
+        }
+    } else |_| {}
+
+    if (host.dynamic_linker.get()) |dl_path| {
+        var link_buf: [std.fs.max_path_bytes]u8 = undefined;
+        if (std.Io.Dir.readLinkAbsolute(b.graph.io, dl_path, &link_buf)) |n| {
+            const base = std.fs.path.basename(link_buf[0..n]);
+            if (std.mem.startsWith(u8, base, "ld-") and std.mem.endsWith(u8, base, ".so")) {
+                if (std.Target.Query.parseVersion(base["ld-".len .. base.len - ".so".len])) |ver| {
+                    return ver;
+                } else |_| {}
+            }
+        } else |_| {}
+    }
+
+    return host.os.version_range.linux.glibc;
+}
+
 fn addTestRunnerExecutable(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -1294,6 +1321,7 @@ fn addTestRunnerExecutable(
         .target = target,
         .optimize = .Debug,
         .link_libc = true,
+        .sanitize_c = .off,
     });
     mod.addCSourceFile(.{
         .file = runner_c,
