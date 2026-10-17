@@ -30,6 +30,16 @@ extern "C"
 #ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
 
 JENT_INTERNAL
+extern struct jent_notime_thread jent_notime_thread_builtin;
+#ifdef JENT_PTHREAD
+JENT_INTERNAL
+void *jent_notime_sample_timer(void *arg);
+#else
+JENT_INTERNAL
+int jent_notime_sample_timer(void *arg);
+#endif
+
+JENT_INTERNAL
 void jent_notime_block_switch(void);
 JENT_INTERNAL
 int jent_notime_set_cpu(unsigned long cpu);

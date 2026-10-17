@@ -133,7 +133,7 @@ int jent_fips_enabled(void)
  * An unreadable or empty file means not enabled, as does a kernel without the
  * indicator.
  */
-static int jent_fips_enabled_file(const char *file)
+int jent_fips_enabled_file(const char *file)
 {
 	char buf[2] = "0";
 	int fd = 0;

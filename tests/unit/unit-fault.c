@@ -179,7 +179,17 @@ static JENT_UT_MAYBE_UNUSED int fi_mlock(const void *addr, size_t len)
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include <errno.h>
+#include "jitterentropy-internal.h"
+#include "jitterentropy-base.h"
+#include "jitterentropy-gcd.h"
+#include "jitterentropy-health.h"
+#include "jitterentropy-noise.h"
+#include "jitterentropy-timer.h"
+#include "jitterentropy-sha3.h"
+#include "jitterentropy-uuid.h"
+#include "arch/jitterentropy-arch-thread.h"
 
 #include "jitterentropy-arch-memory.c"
 
@@ -496,15 +506,6 @@ int jent_notime_thread_create(struct jent_notime_ctx *ctx,
 
 int jent_fips_enabled(void);
 
-#include "jitterentropy-sha3.c"
-#include "jitterentropy-gcd.c"
-#include "jitterentropy-health.c"
-#include "jitterentropy-noise.c"
-#include "jitterentropy-timer.c"
-#include "jitterentropy-base.c"
-#include "jitterentropy-uuid.c"
-#include "jitterentropy-status.c"
-
 #include "jitterentropy-arch-cache.c"
 /*
  * The rename is scoped to this one include: the sources above call
@@ -520,7 +521,6 @@ int jent_fips_enabled(void)
 		return 1;
 	return jent_fi_real_fips_enabled();
 }
-#include "jitterentropy-arch-sched.c"
 #include "jitterentropy-arch-random.c"
 
 #ifndef FI_WINDOWS

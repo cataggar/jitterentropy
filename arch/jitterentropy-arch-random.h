@@ -70,6 +70,43 @@
 
 /* No includes, as in every arch/ header: jitterentropy.h has the types. */
 
+#ifdef LINUX_KERNEL
+# define JENT_RANDOM_LINUX_KERNEL
+#elif defined(_KERNEL) && defined(__FreeBSD__)
+# define JENT_RANDOM_ARC4RANDOM
+#elif defined(JENT_BAREMETAL)
+#elif defined(_MSC_VER) || defined(__MINGW32__)
+# define JENT_RANDOM_WINDOWS
+#elif defined(__APPLE__)  || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+      defined(__NetBSD__) || defined(__DragonFly__)
+# define JENT_RANDOM_ARC4RANDOM
+#elif defined(__linux__)
+# if defined(__ANDROID__) && __ANDROID_API__ < 28
+#  define JENT_RANDOM_DEVURANDOM
+# elif defined(__GLIBC__) && \
+       (__GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 25))
+#  define JENT_RANDOM_DEVURANDOM
+# else
+#  define JENT_RANDOM_GETRANDOM
+# endif
+#elif defined(__unix__) || defined(__sun) || defined(_AIX) || \
+      defined(__HAIKU__) || defined(__CYGWIN__)
+# define JENT_RANDOM_DEVURANDOM
+#endif
+
+#if defined(JENT_RANDOM_LINUX_KERNEL) || defined(JENT_RANDOM_WINDOWS) || \
+    defined(JENT_RANDOM_ARC4RANDOM) || defined(JENT_RANDOM_GETRANDOM) || \
+    defined(JENT_RANDOM_DEVURANDOM)
+# define JENT_RANDOM_AVAILABLE
+#endif
+
+#if defined(JENT_RANDOM_GETRANDOM) || defined(JENT_RANDOM_DEVURANDOM)
+JENT_INTERNAL
+int jent_random_read_file(const char *path, uint8_t *buf, size_t len);
+JENT_INTERNAL
+int jent_random_dev_urandom(uint8_t *buf, size_t len);
+#endif
+
 /*
  * Fill @buf with @len bytes from whichever of the above this target has.
  * Returns 0 on success and nonzero where there is none to ask or the ask

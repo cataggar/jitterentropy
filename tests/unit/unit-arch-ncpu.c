@@ -51,11 +51,12 @@
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
-
-#include "jitterentropy-arch-cache.c"
-#include "jitterentropy-arch-fips.c"
-#include "jitterentropy-arch-memory.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include "jitterentropy-internal.h"
+#if defined(_MSC_VER) || defined(__MINGW32__)
+# include <windows.h>
+# define JENT_ARCH_CACHE_WINDOWS
+#endif
 
 /*
  * The processor group layout and the thread's group affinity, replaceable for
@@ -256,10 +257,7 @@ static ssize_t ut_read(int fd, void *buf, size_t len)
 # endif
 #endif
 
-#include "jitterentropy-arch-sched.c"
-#include "jitterentropy-arch-thread.c"
-#include "jitterentropy-arch-timer.c"
-#include "jitterentropy-arch-random.c"
+#include "arch/jitterentropy-arch-thread.h"
 
 static void test_ncpu(void)
 {

@@ -57,7 +57,7 @@
 #include <string.h>
 #endif
 
-static void jent_uuid_format(const uint8_t b[16], char *out)
+void jent_uuid_format(const uint8_t b[16], char *out)
 {
 	static const char hex[] = "0123456789abcdef";
 	int i, j = 0;
@@ -77,7 +77,7 @@ static void jent_uuid_format(const uint8_t b[16], char *out)
 static uint32_t jent_uuid_counter = 0;
 
 /* Without a CSPRNG: SHA3-256 of the counter and the time as a version 8 UUID. */
-static void jent_uuid_from_counter(uint8_t b[16])
+void jent_uuid_from_counter(uint8_t b[16])
 {
 	HASH_CTX_ON_STACK(ctx);
 	uint8_t digest[JENT_SHA3_256_SIZE_DIGEST], in[12];

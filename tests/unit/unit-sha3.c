@@ -36,10 +36,9 @@
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
-
-#include "jitterentropy-sha3.c"
-#include "jitterentropy-arch-memory.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include "jitterentropy-internal.h"
+#include "jitterentropy-sha3.h"
 
 /*
  * The known answers the library carries for itself. Run first: everything

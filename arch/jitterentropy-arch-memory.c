@@ -269,7 +269,7 @@ void jent_memset_secure(void *s, size_t n)
 /* The crypto libraries place their memory themselves. */
 #if !defined(LIBGCRYPT) && !defined(OPENSSL) && !defined(AWSLC)
 #ifdef JENT_ARCH_MEM_WINDOWS
-static size_t jent_pagesize(void)
+size_t jent_pagesize(void)
 {
 	SYSTEM_INFO si;
 
@@ -284,7 +284,7 @@ static size_t jent_pagesize(void)
 #  define MAP_ANONYMOUS MAP_ANON
 # endif
 
-static size_t jent_pagesize(void)
+size_t jent_pagesize(void)
 {
 	long page_size = sysconf(_SC_PAGESIZE);
 

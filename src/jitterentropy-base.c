@@ -62,7 +62,7 @@
  * @return returns the argument current_osr if equal to or larger than
  * JENT_MIN_OSR otherwise, returns JENT_MIN_OSR.
  */
-static unsigned int ensure_osr_is_at_least_minimal(unsigned int current_osr)
+unsigned int ensure_osr_is_at_least_minimal(unsigned int current_osr)
 {
 	if (current_osr < JENT_MIN_OSR)
 		return (unsigned int) JENT_MIN_OSR;
@@ -474,11 +474,9 @@ err:
 	return ret ? ret : (ssize_t)orig_len;
 }
 
-static struct rand_data
-*jent_entropy_collector_alloc_internal(unsigned int osr, unsigned int flags);
 static struct rand_data *jent_entropy_collector_startup(struct rand_data *ec);
 
-static int jent_health_failure_reset(struct rand_data **ec, int startup)
+int jent_health_failure_reset(struct rand_data **ec, int startup)
 {
 	struct rand_data *new_ec;
 	unsigned int osr, flags;
@@ -747,9 +745,9 @@ unsigned int jent_hashloop_cnt(unsigned int flags)
  * set earlier, an allocation racing a first initialization skipped its own
  * and found no GCD yet.
  */
-static int jent_selftest_run = 0;
+int jent_selftest_run = 0;
 
-static struct rand_data
+struct rand_data
 *jent_entropy_collector_alloc_internal(unsigned int osr, unsigned int flags)
 {
 	struct rand_data *entropy_collector;
@@ -1044,13 +1042,13 @@ struct rand_data *jent_entropy_collector_alloc(unsigned int osr,
 	return ec;
 }
 
-#if defined(LINUX_KERNEL) || defined(JENT_RAW_COLLECTOR)
 static inline int jent_entropy_init_common_pre(unsigned int flags);
 
 /*
  * The self tests of the conditioning, which jent_entropy_collector_alloc_raw()
  * runs: EHASH or EGCD for a failed one, for a recording to name.
  */
+JENT_INTERNAL
 int jent_raw_selftest(unsigned int flags)
 {
 	return jent_entropy_init_common_pre(flags);
@@ -1058,16 +1056,15 @@ int jent_raw_selftest(unsigned int flags)
 
 /*
  * Test interface only, for linux_kernel/jitterentropy_testing.c and the
- * recording library of tests/raw-entropy/recording_library, and built only
- * for them - JENT_RAW_COLLECTOR is defined for the recording library's own
- * copy of the sources, never for libjitterentropy: allocate a collector
- * without the startup entropy collection and its health-test reset ladder,
- * so the raw noise recording measures exactly the requested OSR and flags
- * (and thus memory size and hash loop count). The self tests of the
+ * recording library of tests/raw-entropy/recording_library: allocate a
+ * collector without the startup entropy collection and its health-test reset
+ * ladder, so the raw noise recording measures exactly the requested OSR and
+ * flags (and thus memory size and hash loop count). The self tests of the
  * conditioning run first: a recording over a broken SHA-3 or GCD is no
  * assessment of anything. Regular consumers must use
  * jent_entropy_collector_alloc().
  */
+JENT_INTERNAL
 struct rand_data *jent_entropy_collector_alloc_raw(unsigned int osr,
 						   unsigned int flags)
 {
@@ -1085,7 +1082,6 @@ struct rand_data *jent_entropy_collector_alloc_raw(unsigned int osr,
 						     flags |
 						     JENT_INT_MEASURE_CLOCK);
 }
-#endif /* LINUX_KERNEL || JENT_RAW_COLLECTOR */
 
 JENT_PRIVATE_STATIC
 void jent_entropy_collector_free(struct rand_data *entropy_collector)

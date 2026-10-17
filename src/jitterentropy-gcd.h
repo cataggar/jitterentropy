@@ -32,6 +32,19 @@ extern "C"
 #define JENT_GCD_CLOCK_NOTIME	1	/* the internal timer */
 #define JENT_GCD_CLOCKS		2
 
+#define JENT_GCD_SELFTEST_ELEM 10
+#define JENT_GCD_SELFTEST_EXP 3ULL
+
+JENT_INTERNAL
+extern uint32_t jent_common_timer_gcd[JENT_GCD_CLOCKS];
+
+JENT_INTERNAL
+uint64_t jent_gcd64(uint64_t a, uint64_t b);
+JENT_INTERNAL
+int jent_gcd_analyze_internal(uint64_t *delta_history, size_t nelem,
+			      uint64_t *running_gcd_out,
+			      uint64_t *delta_sum_out);
+
 /* Internal: JENT_INTERNAL, not JENT_PRIVATE_STATIC, which would export them. */
 JENT_INTERNAL
 int jent_gcd_analyze(uint64_t *delta_history, size_t nelem, size_t osr,

@@ -28,57 +28,26 @@
  * what lets it link beside libjitterentropy, shared or static, and it is a
  * property of the compilation - no linker has to hide anything afterwards.
  */
-#define JENT_PRIVATE_COMPILE
-
-/*
- * The copy calls only part of the library. JENT_PRIVATE_STATIC marks it unused
- * for GCC and Clang; MSVC reports each unreferenced static function at /W4.
- */
 #ifdef _MSC_VER
 # pragma warning(disable: 4505)
 #endif
 
-/*
- * jent_entropy_collector_alloc_raw() of jitterentropy-base.c below, for the
- * recording of jitterentropy-record.c - which defines it as well, but only
- * once the library sources are behind it.
- */
+#ifndef JENT_RAW_COLLECTOR
 #define JENT_RAW_COLLECTOR
+#endif
 
-/*
- * The feature-test macros, ahead of the first system header of the
- * translation unit, which the first source below includes: the ones each
- * arch/ backend states would come too late for all but the first. _GNU_SOURCE
- * is what the two affinity backends and the recording's CPU pinning set.
- */
 #if defined(__linux__) && !defined(_GNU_SOURCE)
 # define _GNU_SOURCE
 #endif
 #include "../../../arch/jitterentropy-arch-compat.h"
 
-/*
- * The atomic accessors of the process-wide state. Absorbed ahead of
- * everything else because it depends on nothing else and nearly everything
- * else depends on it - see arch/jitterentropy-arch-atomic.h.
- */
-#include "../../../arch/jitterentropy-arch-atomic.c"
-
-#include "../../../src/jitterentropy-sha3.c"
-#include "../../../src/jitterentropy-gcd.c"
-#include "../../../src/jitterentropy-health.c"
-#include "../../../src/jitterentropy-noise.c"
-#include "../../../src/jitterentropy-timer.c"
-#include "../../../src/jitterentropy-base.c"
-#include "../../../src/jitterentropy-uuid.c"
-#include "../../../src/jitterentropy-status.c"
-
-#include "../../../arch/jitterentropy-arch-cache.c"
-#include "../../../arch/jitterentropy-arch-fips.c"
-#include "../../../arch/jitterentropy-arch-memory.c"
-#include "../../../arch/jitterentropy-arch-ncpu.c"
-#include "../../../arch/jitterentropy-arch-sched.c"
-#include "../../../arch/jitterentropy-arch-thread.c"
-#include "../../../arch/jitterentropy-arch-timer.c"
-#include "../../../arch/jitterentropy-arch-random.c"
+#include "jitterentropy-internal.h"
+#include "jitterentropy-base.h"
+#include "jitterentropy-gcd.h"
+#include "jitterentropy-health.h"
+#include "jitterentropy-noise.h"
+#include "jitterentropy-timer.h"
+#include "jitterentropy-sha3.h"
+#include "jitterentropy-uuid.h"
 
 #include "jitterentropy-record.c"

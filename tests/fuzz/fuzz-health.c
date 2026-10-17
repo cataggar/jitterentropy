@@ -92,9 +92,9 @@
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
-
-#include "jitterentropy-health.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include "jitterentropy-internal.h"
+#include "jitterentropy-health.h"
 
 /*
  * Referenced from the recovery loop of the RCT with memory. A stub, for the

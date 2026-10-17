@@ -201,8 +201,8 @@ static inline uint32_t xoshiro128starstar(uint32_t *s)
  *			    the NTG.1 startup process where the memory access
  *			    and hash loop are handled separately.
  */
-static void jent_memaccess_pseudorandom(struct rand_data *ec, uint64_t loop_cnt,
-					uint64_t *current_delta)
+void jent_memaccess_pseudorandom(struct rand_data *ec, uint64_t loop_cnt,
+				 uint64_t *current_delta)
 {
 	uint64_t i = 0, time_now_start = 0, time_now_end = 0, tmp_delta = 0;
 	union {
@@ -298,9 +298,9 @@ static void jent_memaccess_pseudorandom(struct rand_data *ec, uint64_t loop_cnt,
  *			    the NTG.1 startup process where the memory access
  *			    and hash loop are handled separately.
  */
-static void jent_memaccess_deterministic(struct rand_data *ec,
-					 uint64_t loop_cnt,
-					 uint64_t *current_delta)
+void jent_memaccess_deterministic(struct rand_data *ec,
+				  uint64_t loop_cnt,
+				  uint64_t *current_delta)
 {
 	uint64_t time_now_start = 0, time_now_end = 0, tmp_delta = 0;
 	unsigned int wrap = 0;
@@ -562,7 +562,7 @@ unsigned int jent_measure_jitter(struct rand_data *ec,
 	JENT_ROUNDUP_TO_THREE(                                                 \
 		JENT_MEASURE_JITTER_LOOP_CTR(_osr, _safety_factor))
 
-static void jent_random_data_one(
+void jent_random_data_one(
 	struct rand_data *ec,
 	unsigned int (*measure_jitter)(struct rand_data *ec,
 			               uint64_t loop_cnt,
@@ -616,6 +616,9 @@ static void jent_random_data_one(
  *
  * @param[in] ec Reference to entropy collector
  */
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32) && !defined(__CYGWIN__)
+__attribute__((weak))
+#endif
 void jent_random_data(struct rand_data *ec)
 {
 	/*

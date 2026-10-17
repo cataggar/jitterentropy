@@ -135,7 +135,7 @@ static void jent_lag_init(struct rand_data *ec, unsigned int osr)
  *
  * @param[in] ec Reference to entropy collector
  */
-static void jent_lag_reset(struct rand_data *ec)
+void jent_lag_reset(struct rand_data *ec)
 {
 	unsigned int i;
 
@@ -165,7 +165,7 @@ static void jent_lag_reset(struct rand_data *ec)
  * @param[in] ec Reference to entropy collector
  * @param[in] current_delta Current time delta
  */
-static void jent_lag_insert(struct rand_data *ec, uint64_t current_delta)
+void jent_lag_insert(struct rand_data *ec, uint64_t current_delta)
 {
 	uint64_t prediction;
 	unsigned int i;
@@ -275,7 +275,7 @@ void jent_lag_duplicate(struct rand_data *new_ec, struct rand_data *old_ec)
 
 #else /* JENT_HEALTH_LAG_PREDICTOR */
 
-static inline void jent_lag_insert(struct rand_data *ec, uint64_t current_delta)
+void jent_lag_insert(struct rand_data *ec, uint64_t current_delta)
 {
 	(void)ec;
 	(void)current_delta;
@@ -303,7 +303,7 @@ static inline void jent_lag_init(struct rand_data *ec, unsigned int osr)
 	(void)osr;
 }
 
-static inline void jent_lag_reset(struct rand_data *ec)
+void jent_lag_reset(struct rand_data *ec)
 {
 	(void)ec;
 }
@@ -433,7 +433,7 @@ static void jent_apt_reset(struct rand_data *ec)
  * @param[in] ec Reference to entropy collector
  * @param[in] current_delta  Current time delta
  */
-static void jent_apt_insert(struct rand_data *ec, uint64_t current_delta)
+void jent_apt_insert(struct rand_data *ec, uint64_t current_delta)
 {
 	current_delta &= JENT_APT_MASK;
 
@@ -545,7 +545,7 @@ static void jent_rct_mem_init_ntg1(struct rand_data *ec)
 		jent_rct_mem_cutoff_permanent_lookup_ntg1[ec->osr - 1];
 }
 
-static void jent_rct_mem_insert(struct rand_data *ec, unsigned int stuck)
+void jent_rct_mem_insert(struct rand_data *ec, unsigned int stuck)
 {
 	/* Start of a new window */
 	if (ec->rct_mem_ctr == 0)
@@ -750,7 +750,7 @@ void jent_health_duplicate(struct rand_data *new_ec, struct rand_data *old_ec)
  * @param[in] ec Reference to entropy collector
  * @param[in] stuck Indicator whether the value is stuck
  */
-static void jent_rct_insert(struct rand_data *ec, unsigned int stuck)
+void jent_rct_insert(struct rand_data *ec, unsigned int stuck)
 {
 	if (stuck) {
 		ec->rct_count++;

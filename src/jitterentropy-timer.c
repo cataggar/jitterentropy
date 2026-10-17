@@ -130,7 +130,7 @@ static void jent_notime_stop(void *ctx)
 	jent_notime_thread_join(thread_ctx);
 }
 
-static struct jent_notime_thread jent_notime_thread_builtin = {
+struct jent_notime_thread jent_notime_thread_builtin = {
 	.jent_notime_init  = jent_notime_init,
 	.jent_notime_fini  = jent_notime_fini,
 	.jent_notime_start = jent_notime_start,
@@ -188,9 +188,9 @@ static struct jent_notime_thread jent_notime_thread_external;
  * samples timer from a ring oscillator.
  */
 #ifdef JENT_PTHREAD
-static void *jent_notime_sample_timer(void *arg)
+void *jent_notime_sample_timer(void *arg)
 #else
-static int jent_notime_sample_timer(void *arg)
+int jent_notime_sample_timer(void *arg)
 #endif
 {
 	struct rand_data *ec = (struct rand_data *)arg;

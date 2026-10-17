@@ -57,6 +57,19 @@ unsigned int jent_measure_jitter(struct rand_data *ec,
 				 uint64_t *ret_current_delta,
 				 int health);
 JENT_INTERNAL
+void jent_memaccess_pseudorandom(struct rand_data *ec, uint64_t loop_cnt,
+				 uint64_t *current_delta);
+JENT_INTERNAL
+void jent_memaccess_deterministic(struct rand_data *ec, uint64_t loop_cnt,
+				  uint64_t *current_delta);
+JENT_INTERNAL
+void jent_random_data_one(
+	struct rand_data *ec,
+	unsigned int (*measure_jitter)(struct rand_data *ec,
+				       uint64_t loop_cnt,
+				       uint64_t *ret_current_delta,
+				       int health));
+JENT_INTERNAL
 void jent_random_data(struct rand_data *ec);
 JENT_INTERNAL
 void jent_read_random_block(struct rand_data *ec, char *dst, size_t dst_len);

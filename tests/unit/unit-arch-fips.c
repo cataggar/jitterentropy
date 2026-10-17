@@ -60,16 +60,8 @@
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
-
-#include "jitterentropy-arch-cache.c"
-#include "jitterentropy-arch-fips.c"
-#include "jitterentropy-arch-memory.c"
-#include "jitterentropy-arch-ncpu.c"
-#include "jitterentropy-arch-sched.c"
-#include "jitterentropy-arch-thread.c"
-#include "jitterentropy-arch-timer.c"
-#include "jitterentropy-arch-random.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include "jitterentropy-internal.h"
 
 static void test_fips(void)
 {

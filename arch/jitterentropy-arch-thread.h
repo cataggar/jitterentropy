@@ -68,6 +68,22 @@
 
 #ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
 
+#if defined(JENT_ARCH_THREAD_HOSTED)
+# if defined(_MSC_VER) || defined(__MINGW32__)
+#  define JENT_ARCH_THREAD_PIN_WINDOWS
+# elif defined(__linux__)
+#  define JENT_ARCH_THREAD_PIN_LINUX
+# elif defined(__APPLE__)
+#  define JENT_ARCH_THREAD_PIN_MACOS
+# elif defined(__FreeBSD__)
+#  define JENT_ARCH_THREAD_PIN_FREEBSD
+# elif defined(__NetBSD__)
+#  define JENT_ARCH_THREAD_PIN_NETBSD
+# elif defined(__OpenBSD__)
+#  define JENT_ARCH_THREAD_PIN_OPENBSD
+# endif
+#endif
+
 /*
  * Include after jitterentropy.h, which is where the threading back-end and the
  * execution environment are selected (JENT_PTHREAD / JENT_WIN_THREADS and the

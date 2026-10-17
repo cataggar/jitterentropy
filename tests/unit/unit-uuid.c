@@ -56,18 +56,10 @@
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
-
-#include "jitterentropy-arch-cache.c"
-#include "jitterentropy-arch-fips.c"
-#include "jitterentropy-arch-memory.c"
-#include "jitterentropy-arch-ncpu.c"
-#include "jitterentropy-arch-sched.c"
-#include "jitterentropy-arch-thread.c"
-#include "jitterentropy-arch-timer.c"
-#include "jitterentropy-arch-random.c"
-#include "jitterentropy-sha3.c"
-#include "jitterentropy-uuid.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include "jitterentropy-internal.h"
+#include "jitterentropy-sha3.h"
+#include "jitterentropy-uuid.h"
 
 /* What jent_uuid_generate() must never produce - see below. */
 #define JENT_UT_NIL_UUID "00000000-0000-0000-0000-000000000000"

@@ -167,7 +167,7 @@
  * read, an end of file before @len bytes - can be produced from a file the
  * caller made; /dev/urandom presents none of them.
  */
-static int jent_random_read_file(const char *path, uint8_t *buf, size_t len)
+int jent_random_read_file(const char *path, uint8_t *buf, size_t len)
 {
 	size_t i = 0;
 	int fd = open(path, O_RDONLY | JENT_O_CLOEXEC);
@@ -192,7 +192,7 @@ static int jent_random_read_file(const char *path, uint8_t *buf, size_t len)
 	return (i == len) ? 0 : -1;
 }
 
-static int jent_random_dev_urandom(uint8_t *buf, size_t len)
+int jent_random_dev_urandom(uint8_t *buf, size_t len)
 {
 	return jent_random_read_file("/dev/urandom", buf, len);
 }

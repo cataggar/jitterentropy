@@ -45,6 +45,11 @@
 /* "8-4-4-4-12" including the NUL, defined identically in jitterentropy.h. */
 #define JENT_UUID_STRLEN 37
 
+JENT_INTERNAL
+void jent_uuid_format(const uint8_t b[16], char *out);
+JENT_INTERNAL
+void jent_uuid_from_counter(uint8_t b[16]);
+
 /*
  * Generate an RFC 9562 version 4 UUID string of JENT_UUID_STRLEN bytes, or a
  * version 8 one hashed from a counter and the time without a CSPRNG.

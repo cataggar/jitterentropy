@@ -28,6 +28,17 @@ extern "C"
 #endif
 
 JENT_INTERNAL
+extern int jent_selftest_run;
+
+JENT_INTERNAL
+unsigned int ensure_osr_is_at_least_minimal(unsigned int current_osr);
+JENT_INTERNAL
+struct rand_data *jent_entropy_collector_alloc_internal(unsigned int osr,
+							unsigned int flags);
+JENT_INTERNAL
+int jent_health_failure_reset(struct rand_data **ec, int startup);
+
+JENT_INTERNAL
 int jent_time_entropy_init(unsigned int osr, unsigned int flags);
 JENT_INTERNAL
 uint32_t jent_memsize(unsigned int flags);

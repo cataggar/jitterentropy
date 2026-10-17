@@ -32,7 +32,7 @@
  * 32 bits (see the bound in jent_gcd_verdict()) for atomic access, zero is not
  * established.
  */
-static uint32_t jent_common_timer_gcd[JENT_GCD_CLOCKS] = { 0 };
+uint32_t jent_common_timer_gcd[JENT_GCD_CLOCKS] = { 0 };
 
 /* Takes enable_notime as it stands, so that no call site has to translate. */
 static inline unsigned int jent_gcd_clock(unsigned int notime)
@@ -46,7 +46,7 @@ static inline int jent_gcd_tested(unsigned int clock)
 }
 
 /* A straight forward implementation of the Euclidean algorithm for GCD. */
-static inline uint64_t jent_gcd64(uint64_t a, uint64_t b)
+uint64_t jent_gcd64(uint64_t a, uint64_t b)
 {
 	/* Make a greater a than or equal b. */
 	if (a < b) {
@@ -69,9 +69,9 @@ static inline uint64_t jent_gcd64(uint64_t a, uint64_t b)
 	return a;
 }
 
-static int jent_gcd_analyze_internal(uint64_t *delta_history, size_t nelem,
-				     uint64_t *running_gcd_out,
-				     uint64_t *delta_sum_out)
+int jent_gcd_analyze_internal(uint64_t *delta_history, size_t nelem,
+			      uint64_t *running_gcd_out,
+			      uint64_t *delta_sum_out)
 {
 	uint64_t running_gcd, delta_sum = 0;
 	size_t i;
@@ -216,8 +216,6 @@ int jent_gcd_get(uint64_t *value, unsigned int notime)
 
 int jent_gcd_selftest(unsigned int flags)
 {
-#define JENT_GCD_SELFTEST_ELEM 10
-#define JENT_GCD_SELFTEST_EXP 3ULL
 	uint64_t *gcd = jent_gcd_init(JENT_GCD_SELFTEST_ELEM, flags);
 	uint64_t running_gcd, delta_sum;
 	unsigned int i;

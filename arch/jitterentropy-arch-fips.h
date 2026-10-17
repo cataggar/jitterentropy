@@ -59,6 +59,13 @@
 #ifndef _JITTERENTROPY_ARCH_FIPS_H
 #define _JITTERENTROPY_ARCH_FIPS_H
 
+#if !defined(LINUX_KERNEL) && !defined(AWSLC) && !defined(OPENSSL) && \
+    !defined(JENT_BAREMETAL) && defined(__linux__)
+# define JENT_ARCH_FIPS_PROC
+JENT_INTERNAL
+int jent_fips_enabled_file(const char *file);
+#endif
+
 /*
  * Return non-zero when FIPS mode is active for the active backend.
  * Defined in arch/jitterentropy-arch-fips.c.

@@ -666,7 +666,6 @@ struct rand_data
 #endif /* JENT_HEALTH_LAG_PREDICTOR */
 };
 
-#if defined(LINUX_KERNEL) || defined(JENT_RAW_COLLECTOR)
 /*
  * A collector without the startup, for the raw noise recordings of
  * linux_kernel/jitterentropy_testing.c and tests/raw-entropy/recording_library.
@@ -677,7 +676,6 @@ struct rand_data *jent_entropy_collector_alloc_raw(unsigned int osr,
 /* Its self tests of the conditioning: 0, EHASH or EGCD. */
 JENT_INTERNAL
 int jent_raw_selftest(unsigned int flags);
-#endif
 
 #ifdef __cplusplus
 }

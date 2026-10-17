@@ -177,7 +177,15 @@ static JENT_UT_MAYBE_UNUSED void ze_free(void *ptr)
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include "jitterentropy-internal.h"
+#include "jitterentropy-base.h"
+#include "jitterentropy-gcd.h"
+#include "jitterentropy-health.h"
+#include "jitterentropy-noise.h"
+#include "jitterentropy-timer.h"
+#include "jitterentropy-sha3.h"
+#include "jitterentropy-uuid.h"
 
 #include "jitterentropy-arch-memory.c"
 #undef free
@@ -186,23 +194,6 @@ static JENT_UT_MAYBE_UNUSED void ze_free(void *ptr)
 #else
 # undef munmap
 #endif
-
-#include "jitterentropy-sha3.c"
-#include "jitterentropy-gcd.c"
-#include "jitterentropy-health.c"
-#include "jitterentropy-noise.c"
-#include "jitterentropy-timer.c"
-#include "jitterentropy-base.c"
-#include "jitterentropy-uuid.c"
-#include "jitterentropy-status.c"
-
-#include "jitterentropy-arch-cache.c"
-#include "jitterentropy-arch-fips.c"
-#include "jitterentropy-arch-ncpu.c"
-#include "jitterentropy-arch-sched.c"
-#include "jitterentropy-arch-thread.c"
-#include "jitterentropy-arch-timer.c"
-#include "jitterentropy-arch-random.c"
 
 /*
  * The arenas of libgcrypt, OpenSSL and AWS-LC are released through their own

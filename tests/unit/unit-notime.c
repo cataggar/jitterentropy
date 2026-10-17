@@ -148,12 +148,16 @@ static JENT_UT_MAYBE_UNUSED int fi_mlock(const void *addr, size_t len)
 # define mprotect fi_mprotect
 # define mlock fi_mlock
 #endif
-/*
- * The atomic accessors of the process-wide state. Absorbed ahead of
- * everything else because it depends on nothing else and nearly everything
- * else depends on it - see arch/jitterentropy-arch-atomic.h.
- */
-#include "jitterentropy-arch-atomic.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include "jitterentropy-internal.h"
+#include "jitterentropy-base.h"
+#include "jitterentropy-gcd.h"
+#include "jitterentropy-health.h"
+#include "jitterentropy-noise.h"
+#include "jitterentropy-timer.h"
+#include "jitterentropy-sha3.h"
+#include "jitterentropy-uuid.h"
+#include "arch/jitterentropy-arch-thread.h"
 
 #include "jitterentropy-arch-memory.c"
 #ifdef FI_WINDOWS
@@ -480,20 +484,6 @@ int jent_notime_thread_create(struct jent_notime_ctx *ctx,
 	return jent_fi_real_thread_create(ctx, start_routine, arg);
 }
 #endif /* JENT_CONF_ENABLE_INTERNAL_TIMER */
-
-#include "jitterentropy-sha3.c"
-#include "jitterentropy-gcd.c"
-#include "jitterentropy-health.c"
-#include "jitterentropy-noise.c"
-#include "jitterentropy-timer.c"
-#include "jitterentropy-base.c"
-#include "jitterentropy-uuid.c"
-#include "jitterentropy-status.c"
-
-#include "jitterentropy-arch-cache.c"
-#include "jitterentropy-arch-fips.c"
-#include "jitterentropy-arch-sched.c"
-#include "jitterentropy-arch-random.c"
 
 #ifndef FI_WINDOWS
 # undef sysconf

@@ -196,11 +196,6 @@ pub fn build(b: *std.Build) void {
         "JENT_RECORD_API",
         &.{},
     );
-    verifyRecordingSources(
-        b,
-        "tests/raw-entropy/recording_library/jitterentropy-record-lib.c",
-        lib_c_sources,
-    );
     verifyVersionScript(
         b,
         "linux_kernel/userspace/jitterentropy-kernel.h",
@@ -243,8 +238,39 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "stack_protector", stack_protector);
     build_options.addOption(std.builtin.LinkMode, "linkage", linkage);
 
+    const mock_build_options = b.addOptions();
+    mock_build_options.addOption(bool, "internal_timer", internal_timer);
+    mock_build_options.addOption(bool, "mock_timer", true);
+    mock_build_options.addOption(bool, "raw_memory_access", raw_memory_access);
+    mock_build_options.addOption(bool, "stack_protector", stack_protector);
+    mock_build_options.addOption(std.builtin.LinkMode, "linkage", .static);
+
     const os_tag = target.result.os.tag;
     const c_flags = getCFlags(b, target, opts, &.{}) catch @panic("OOM");
+
+    const zig_core_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
+    zig_core_mod.root_source_file = b.path("src/root.zig");
+    zig_core_mod.addOptions("build_options", build_options);
+    configureIncludePaths(b, zig_core_mod);
+    configureCommonDefines(b, zig_core_mod, target, opts, .static, false);
+    const zig_core_lib = b.addLibrary(.{
+        .name = "jitterentropy-zig-core",
+        .linkage = .static,
+        .root_module = zig_core_mod,
+    });
+
+    var mock_opts = opts;
+    mock_opts.mock_timer = true;
+    const zig_core_mock_mod = createCModule(b, target, optimize, mock_opts, if (os_tag == .windows) null else true);
+    zig_core_mock_mod.root_source_file = b.path("src/root.zig");
+    zig_core_mock_mod.addOptions("build_options", mock_build_options);
+    configureIncludePaths(b, zig_core_mock_mod);
+    configureCommonDefines(b, zig_core_mock_mod, target, mock_opts, .static, false);
+    const zig_core_mock_lib = b.addLibrary(.{
+        .name = "jitterentropy-zig-core-mock",
+        .linkage = .static,
+        .root_module = zig_core_mock_mod,
+    });
 
     const lib_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
     lib_mod.root_source_file = b.path("src/root.zig");
@@ -309,9 +335,12 @@ pub fn build(b: *std.Build) void {
 
     if (enable_recording) {
         const rec_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
+        rec_mod.root_source_file = b.path("src/root.zig");
+        rec_mod.addOptions("build_options", build_options);
         configureIncludePaths(b, rec_mod);
         rec_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
         configureCommonDefines(b, rec_mod, target, opts, linkage, false);
+        rec_mod.addCMacro("JENT_RAW_COLLECTOR", "1");
         if (os_tag == .windows) {
             if (linkage == .dynamic) {
                 rec_mod.addCMacro("JENT_RECORD_BUILDING_DLL", "1");
@@ -320,6 +349,10 @@ pub fn build(b: *std.Build) void {
             }
         }
         configureSystemLibraries(rec_mod, target, opts);
+        rec_mod.addCSourceFiles(.{
+            .files = lib_c_sources,
+            .flags = c_flags,
+        });
         rec_mod.addCSourceFile(.{
             .file = b.path("tests/raw-entropy/recording_library/jitterentropy-record-lib.c"),
             .flags = c_flags,
@@ -485,7 +518,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_rngd_ver.step);
     }
 
-    const gcd_exe = addAbsorbingExecutable(b, "gcd", target, optimize, opts, c_flags, &.{
+    const gcd_exe = addAbsorbingExecutable(b, "gcd", target, optimize, opts, zig_core_lib, c_flags, &.{
         "tests/gcd/gcd.c",
         "src/jitterentropy-gcd.c",
         "arch/jitterentropy-arch-memory.c",
@@ -493,8 +526,10 @@ pub fn build(b: *std.Build) void {
     }, false, false);
     configureCryptoLibraries(gcd_exe.root_module, opts);
 
-    const health_exe = addAbsorbingExecutable(b, "jitterentropy-health", target, optimize, opts, c_flags, &.{
+    const health_exe = addAbsorbingExecutable(b, "jitterentropy-health", target, optimize, opts, zig_core_lib, c_flags, &.{
         "tests/health/health.c",
+        "src/jitterentropy-health.c",
+        "arch/jitterentropy-arch-atomic.c",
     }, false, false);
 
     const flags_exe = addToolExecutable(
@@ -551,11 +586,18 @@ pub fn build(b: *std.Build) void {
             target,
             optimize,
             opts,
+            zig_core_lib,
             c_flags,
             &.{"tests/raw-entropy/recording_userspace/jitterentropy-hashtime.c"},
             true,
             os_tag != .windows,
         );
+        hashtime_exe.root_module.addIncludePath(b.path("tests/raw-entropy/recording_library"));
+        hashtime_exe.root_module.addCMacro("JENT_RAW_COLLECTOR", "1");
+        hashtime_exe.root_module.addCSourceFiles(.{
+            .files = lib_c_sources,
+            .flags = c_flags,
+        });
         if (raw_memory_access) {
             hashtime_exe.root_module.addCMacro("JENT_TEST_MEASURE_RAW_MEMORY_ACCESS", "1");
         }
@@ -987,20 +1029,33 @@ pub fn build(b: *std.Build) void {
     applyTestEnv(run_zig_unit_tests, tsan_options);
     test_step.dependOn(&run_zig_unit_tests.step);
 
+    const zig_harness_mod = b.createModule(.{
+        .root_source_file = b.path("tests/unit/test_harness.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const zig_harness_tests = b.addTest(.{
+        .name = "zig-harness-tests",
+        .root_module = zig_harness_mod,
+    });
+    const run_zig_harness_tests = b.addRunArtifact(zig_harness_tests);
+    test_step.dependOn(&run_zig_harness_tests.step);
+
     for (unit_test_names) |ut_name| {
-        const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, c_flags, false);
+        const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, zig_core_lib, c_flags, false);
         const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
         test_step.dependOn(&run_ut.step);
     }
 
     if (os_tag == .linux) {
-        const ut_kern = addUnitTestExecutable(b, "unit-kernel-lib", target, optimize, opts, c_flags, false);
+        const ut_kern = addUnitTestExecutable(b, "unit-kernel-lib", target, optimize, opts, null, c_flags, false);
         const run_ut_kern = addSkipAwareTestRun(b, test_runner_exe, ut_kern, tsan_options);
         test_step.dependOn(&run_ut_kern.step);
     }
 
     for (mock_unit_test_names) |ut_name| {
-        const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, c_flags, true);
+        const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, zig_core_mock_lib, c_flags, true);
         const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
         test_step.dependOn(&run_ut.step);
     }
@@ -1027,11 +1082,16 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_fuzz_api.step);
 
     const fuzz_health_mod = createCModule(b, target, optimize, opts, null);
+    fuzz_health_mod.linkLibrary(zig_core_lib);
     configureIncludePaths(b, fuzz_health_mod);
     configureCommonDefines(b, fuzz_health_mod, target, opts, .static, false);
     fuzz_health_mod.addCMacro("JENT_FUZZ_STANDALONE", "1");
-    fuzz_health_mod.addCSourceFile(.{
-        .file = b.path("tests/fuzz/fuzz-health.c"),
+    fuzz_health_mod.addCSourceFiles(.{
+        .files = &.{
+            "tests/fuzz/fuzz-health.c",
+            "src/jitterentropy-health.c",
+            "arch/jitterentropy-arch-atomic.c",
+        },
         .flags = c_flags,
     });
     const fuzz_health_exe = b.addExecutable(.{
@@ -1074,10 +1134,15 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_fuzz_api_fuzzer.step);
 
         const fuzz_health_fuzzer_mod = createCModule(b, target, optimize, opts, null);
+        fuzz_health_fuzzer_mod.linkLibrary(zig_core_lib);
         configureIncludePaths(b, fuzz_health_fuzzer_mod);
         configureCommonDefines(b, fuzz_health_fuzzer_mod, target, opts, .static, false);
-        fuzz_health_fuzzer_mod.addCSourceFile(.{
-            .file = b.path("tests/fuzz/fuzz-health.c"),
+        fuzz_health_fuzzer_mod.addCSourceFiles(.{
+            .files = &.{
+                "tests/fuzz/fuzz-health.c",
+                "src/jitterentropy-health.c",
+                "arch/jitterentropy-arch-atomic.c",
+            },
             .flags = c_flags,
         });
         fuzz_health_fuzzer_mod.addCSourceFile(.{
@@ -1348,12 +1413,14 @@ fn addAbsorbingExecutable(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     opts: BuildOptions,
+    zig_core_lib: *std.Build.Step.Compile,
     c_flags: []const []const u8,
     files: []const []const u8,
     needs_system_libs: bool,
     needs_libm: bool,
 ) *std.Build.Step.Compile {
     const mod = createCModule(b, target, optimize, opts, null);
+    mod.linkLibrary(zig_core_lib);
     configureIncludePaths(b, mod);
     mod.addIncludePath(b.path("tests"));
     configureCommonDefines(b, mod, target, opts, .static, false);
@@ -1407,16 +1474,76 @@ fn addToolExecutable(
     });
 }
 
+fn excludedSourcesForUnitTest(name: []const u8) []const []const u8 {
+    if (std.mem.eql(u8, name, "unit-arch-cache")) {
+        return &.{"arch/jitterentropy-arch-cache.c"};
+    }
+    if (std.mem.eql(u8, name, "unit-arch-ncpu")) {
+        return &.{"arch/jitterentropy-arch-ncpu.c"};
+    }
+    if (std.mem.eql(u8, name, "unit-zeroize")) {
+        return &.{"arch/jitterentropy-arch-memory.c"};
+    }
+    if (std.mem.eql(u8, name, "unit-fault")) {
+        return &.{
+            "arch/jitterentropy-arch-memory.c",
+            "arch/jitterentropy-arch-ncpu.c",
+            "arch/jitterentropy-arch-thread.c",
+            "arch/jitterentropy-arch-timer.c",
+            "arch/jitterentropy-arch-cache.c",
+            "arch/jitterentropy-arch-fips.c",
+            "arch/jitterentropy-arch-random.c",
+        };
+    }
+    if (std.mem.eql(u8, name, "unit-notime")) {
+        return &.{
+            "arch/jitterentropy-arch-memory.c",
+            "arch/jitterentropy-arch-ncpu.c",
+            "arch/jitterentropy-arch-thread.c",
+            "arch/jitterentropy-arch-timer.c",
+        };
+    }
+    return &.{};
+}
+
+fn addLibrarySourcesExcluding(
+    b: *std.Build,
+    mod: *std.Build.Module,
+    c_flags: []const []const u8,
+    excluded: []const []const u8,
+) void {
+    for (lib_c_sources) |src| {
+        var skip = false;
+        for (excluded) |ex| {
+            if (std.mem.eql(u8, src, ex)) {
+                skip = true;
+                break;
+            }
+        }
+        if (!skip) {
+            mod.addCSourceFile(.{
+                .file = b.path(src),
+                .flags = c_flags,
+            });
+        }
+    }
+}
+
 fn addUnitTestExecutable(
     b: *std.Build,
     name: []const u8,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     opts: BuildOptions,
+    zig_core_lib: ?*std.Build.Step.Compile,
     c_flags: []const []const u8,
     enable_mock_timer: bool,
 ) *std.Build.Step.Compile {
     const mod = createCModule(b, target, optimize, opts, null);
+    if (zig_core_lib) |core_lib| {
+        mod.linkLibrary(core_lib);
+        addLibrarySourcesExcluding(b, mod, c_flags, excludedSourcesForUnitTest(name));
+    }
     configureIncludePaths(b, mod);
     mod.addIncludePath(b.path("tests"));
     configureCommonDefines(b, mod, target, opts, .static, false);
@@ -1620,20 +1747,6 @@ fn verifyLinktestCalls(
                 "{s} does not call exported function {s} from {s}",
                 .{ source_path, fn_name, script_path },
             );
-        }
-    }
-}
-
-fn verifyRecordingSources(
-    b: *std.Build,
-    comptime record_lib_path: []const u8,
-    c_sources: []const []const u8,
-) void {
-    const content = @embedFile(record_lib_path);
-    for (c_sources) |src| {
-        const needle = std.fmt.allocPrint(b.allocator, "#include \"../../../{s}\"", .{src}) catch @panic("OOM");
-        if (std.mem.indexOf(u8, content, needle) == null) {
-            std.debug.panic("{s} is missing {s}", .{ record_lib_path, needle });
         }
     }
 }

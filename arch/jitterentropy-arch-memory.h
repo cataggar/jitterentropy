@@ -110,6 +110,29 @@
 #ifndef _JITTERENTROPY_ARCH_MEMORY_H
 #define _JITTERENTROPY_ARCH_MEMORY_H
 
+#ifdef LINUX_KERNEL
+# define JENT_ARCH_MEM_LINUX_KERNEL
+#elif defined(_KERNEL) && defined(__FreeBSD__)
+# define JENT_ARCH_MEM_FREEBSD_KERNEL
+#elif defined(JENT_BAREMETAL)
+#elif defined(_MSC_VER) || defined(__MINGW32__)
+# define JENT_ARCH_MEM_WINDOWS
+#else
+# if defined(_POSIX_MAPPED_FILES) && (_POSIX_MAPPED_FILES - 0) > 0 &&	      \
+     defined(_POSIX_MEMORY_PROTECTION) &&				      \
+     (_POSIX_MEMORY_PROTECTION - 0) > 0 &&				      \
+     ((defined(_POSIX_MEMLOCK_RANGE) && (_POSIX_MEMLOCK_RANGE - 0) > 0) ||     \
+      defined(__APPLE__))
+#  define JENT_ARCH_MEM_POSIX_MLOCK
+# endif
+#endif
+
+#if !defined(LIBGCRYPT) && !defined(OPENSSL) && !defined(AWSLC) &&	      \
+    (defined(JENT_ARCH_MEM_WINDOWS) || defined(JENT_ARCH_MEM_POSIX_MLOCK))
+JENT_INTERNAL
+size_t jent_pagesize(void);
+#endif
+
 JENT_INTERNAL
 void jent_memset_secure(void *s, size_t n);
 JENT_INTERNAL

@@ -27,10 +27,10 @@
  * everything else because it depends on nothing else and nearly everything
  * else depends on it - see arch/jitterentropy-arch-atomic.h.
  */
-#include "jitterentropy-arch-atomic.c"
-
-#include "jitterentropy-gcd.c"
-#include "jitterentropy-arch-memory.c"
+#include "arch/jitterentropy-arch-compat.h"
+#include <errno.h>
+#include "jitterentropy-internal.h"
+#include "jitterentropy-gcd.h"
 
 #define ELEM 1000
 
