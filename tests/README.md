@@ -65,7 +65,7 @@ library's lines, 90% of its branches and every one of its functions.
 There are two harnesses under `tests/fuzz`, and they are built in opposite ways
 on purpose.
 
-`fuzz-api.c` drives the API of `jitterentropy.h` as a hostile caller does: null
+`fuzz_api.zig` drives the API of `jitterentropy.h` as a hostile caller does: null
 pointers, lengths of zero and of `SIZE_MAX`, oversampling rates far outside the
 range the library clamps, flag words with every undefined bit set, collectors
 freed twice, calls in an order no documented sequence produces. It links the
@@ -75,9 +75,9 @@ outside the buffer a call was given, a read that delivers the full length or a
 documented negative code, misuse reported rather than acted on - and a failed
 assertion is what the fuzzer records as a crash.
 
-`fuzz-health.c` drives the SP800-90B health tests over time stamps the fuzzer
+`fuzz_health.zig` drives the SP800-90B health tests over time stamps the fuzzer
 chooses, through `jent_health_insert_timestamp()`. That entry point is
-internal, so this one absorbs `src/jitterentropy-health.c` as `tests/health`
+internal, so this one imports the Zig core directly, as `tests/health`
 and the unit tests do. It exists because `fuzz-api` cannot search: every
 operation there allocates a collector or generates from one, so it measures the
 machine's real timer, and a coverage-guided run manages single-digit executions

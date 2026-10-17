@@ -209,6 +209,7 @@ pub const JENT_GCD_CLOCK_NOTIME: c_uint = 1;
 pub const JENT_GCD_CLOCKS: usize = 2;
 
 pub const JENT_NCPU_SET_MAX: c_uint = 1 << 16;
+pub const enable_random_memaccess = !build_options.raw_memory_access;
 
 // ============================================================================
 // Inline Helpers (src/jitterentropy-internal.h, sha3.h, health.h, gcd.h)
@@ -273,6 +274,23 @@ pub const jent_notime_thread = extern struct {
     jent_notime_stop: ?*const fn (?*anyopaque) callconv(.c) void = null,
 };
 
+pub const PthreadAttr = extern struct {
+    __size: [size]u8 align(@alignOf(c_long)) = @splat(0),
+
+    const size: usize = switch (builtin.os.tag) {
+        .linux => if (@sizeOf(usize) == 4)
+            36
+        else if (builtin.cpu.arch == .aarch64 and (builtin.abi.isGnu() or builtin.abi.isAndroid()))
+            64
+        else
+            56,
+        .macos, .ios, .tvos, .watchos, .visionos => if (@sizeOf(usize) == 8) 64 else 40,
+        .netbsd => 2 * @sizeOf(usize),
+        .freebsd, .openbsd, .dragonfly, .illumos => @sizeOf(usize),
+        else => @sizeOf(std.c.pthread_attr_t),
+    };
+};
+
 pub const jent_notime_ctx = if (is_freestanding) extern struct {
     notime_cpu: c_ulong = 0,
 } else if (builtin.os.tag == .windows) extern struct {
@@ -282,7 +300,7 @@ pub const jent_notime_ctx = if (is_freestanding) extern struct {
     notime_cpu: c_ulong = 0,
     notime_thread_started: c_int = 0,
 } else extern struct {
-    notime_pthread_attr: std.c.pthread_attr_t = std.mem.zeroes(std.c.pthread_attr_t),
+    notime_pthread_attr: PthreadAttr = .{},
     notime_thread_id: ?std.c.pthread_t = null,
     notime_cpu: c_ulong = 0,
     notime_thread_started: c_int = 0,
@@ -576,6 +594,7 @@ pub const rand_data = RandData(build_options.internal_timer);
 
 pub const jent_fips_failure_cb = ?*const fn (?*rand_data, c_uint) callconv(.c) void;
 pub const jent_mock_timer_cb = ?*const fn (?*anyopaque, *u64) callconv(.c) void;
+pub const jent_measure_jitter_cb = *const fn (*rand_data, u64, ?*u64, c_int) callconv(.c) c_uint;
 
 // ============================================================================
 // Extern C Declarations for Incremental C/Zig Interop
@@ -585,6 +604,7 @@ pub const jent_mock_timer_cb = ?*const fn (?*anyopaque, *u64) callconv(.c) void;
 pub extern fn jent_read_entropy(ec: ?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
 pub extern fn jent_read_entropy_safe(ec: ?*?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
 pub extern fn jent_entropy_collector_alloc(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
+pub extern fn jent_entropy_collector_alloc_internal(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
 pub extern fn jent_entropy_collector_free(entropy_collector: ?*rand_data) callconv(.c) void;
 pub extern fn jent_entropy_init() callconv(.c) c_int;
 pub extern fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) callconv(.c) c_int;
@@ -619,8 +639,10 @@ pub extern fn jent_sha3_tester() callconv(.c) c_int;
 pub extern fn jent_shake256_init(ctx: *jent_sha_ctx) callconv(.c) void;
 pub extern fn jent_drbg_generate_block(ctx: *jent_sha_ctx, dst: [*]u8, dst_len: usize) callconv(.c) void;
 
-pub extern fn jent_gcd_analyze(delta_history: [*]u64, nelem: usize, osr: usize, notime: c_uint) callconv(.c) c_int;
-pub extern fn jent_gcd_verdict(delta_history: [*]u64, nelem: usize, osr: usize, gcd: *u64) callconv(.c) c_int;
+pub extern fn jent_gcd64(a: u64, b: u64) callconv(.c) u64;
+pub extern fn jent_gcd_analyze_internal(delta_history: ?[*]u64, nelem: usize, running_gcd_out: *u64, delta_sum_out: *u64) callconv(.c) c_int;
+pub extern fn jent_gcd_analyze(delta_history: ?[*]u64, nelem: usize, osr: usize, notime: c_uint) callconv(.c) c_int;
+pub extern fn jent_gcd_verdict(delta_history: ?[*]u64, nelem: usize, osr: usize, gcd: *u64) callconv(.c) c_int;
 pub extern fn jent_gcd_store(gcd: u64, notime: c_uint) callconv(.c) void;
 pub extern fn jent_gcd_init(nelem: usize, flags: c_uint) callconv(.c) ?[*]u64;
 pub extern fn jent_gcd_fini(delta_history: ?[*]u64, nelem: usize) callconv(.c) void;
@@ -640,26 +662,37 @@ pub extern fn jent_health_failure_query(ec: *const rand_data) callconv(.c) c_uin
 pub extern fn jent_health_failure(ec: *rand_data) callconv(.c) c_uint;
 pub extern fn jent_health_init(ec: *rand_data, inittype: jent_health_init_type) callconv(.c) c_int;
 
+pub extern fn jent_get_nstime_internal(ec: *rand_data, out: *u64) callconv(.c) void;
 pub extern fn jent_measure_jitter_ntg1_memaccess(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
 pub extern fn jent_measure_jitter_ntg1_sha3(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
 pub extern fn jent_measure_jitter(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
+pub extern fn jent_random_data_one(ec: *rand_data, measure_jitter: jent_measure_jitter_cb) callconv(.c) void;
 pub extern fn jent_random_data(ec: *rand_data) callconv(.c) void;
 pub extern fn jent_read_random_block(ec: *rand_data, dst: [*]u8, dst_len: usize) callconv(.c) void;
 
+pub extern fn jent_uuid_format(bytes: [*]const u8, out: [*]u8) callconv(.c) void;
+pub extern fn jent_uuid_from_counter(bytes: [*]u8) callconv(.c) void;
 pub extern fn jent_uuid_generate(out: [*]u8) callconv(.c) void;
 
 // Internal arch/ declarations
 pub extern fn jent_atomic_load_int(ptr: *const c_int) callconv(.c) c_int;
 pub extern fn jent_atomic_store_int(ptr: *c_int, val: c_int) callconv(.c) void;
+pub extern fn jent_atomic_exchange_int(ptr: *c_int, val: c_int) callconv(.c) c_int;
 pub extern fn jent_atomic_load_u32(ptr: *const u32) callconv(.c) u32;
 pub extern fn jent_atomic_inc_u32(ptr: *u32) callconv(.c) u32;
 pub extern fn jent_atomic_cmpxchg_u32(ptr: *u32, old: u32, val: u32) callconv(.c) u32;
 pub extern fn jent_atomic_store_u32(ptr: *u32, val: u32) callconv(.c) void;
+pub extern fn jent_atomic_load_u64(ptr: *const u64) callconv(.c) u64;
+pub extern fn jent_atomic_store_u64(ptr: *u64, val: u64) callconv(.c) void;
+pub extern fn jent_atomic_load_ptr(ptr: *const ?*anyopaque) callconv(.c) ?*anyopaque;
+pub extern fn jent_atomic_store_ptr(ptr: *?*anyopaque, val: ?*anyopaque) callconv(.c) void;
+pub extern fn jent_atomic_cas_ptr(ptr: *?*anyopaque, old: ?*anyopaque, val: ?*anyopaque) callconv(.c) ?*anyopaque;
 pub extern fn jent_atomic_load_fips_cb(ptr: *const jent_fips_failure_cb) callconv(.c) jent_fips_failure_cb;
 pub extern fn jent_atomic_store_fips_cb(ptr: *jent_fips_failure_cb, val: jent_fips_failure_cb) callconv(.c) void;
 
 pub extern fn jent_cache_size_roundup(all_caches: c_int) callconv(.c) u64;
 pub extern fn jent_fips_enabled() callconv(.c) c_int;
+pub extern fn jent_fi_real_fips_enabled() callconv(.c) c_int;
 
 pub extern fn jent_memset_secure(s: ?*anyopaque, n: usize) callconv(.c) void;
 pub extern fn jent_zalloc(len: usize, flags: c_uint) callconv(.c) ?*anyopaque;
@@ -670,12 +703,16 @@ pub extern fn jent_memory_backend_name() callconv(.c) [*:0]const u8;
 
 pub extern fn jent_ncpu() callconv(.c) c_long;
 pub extern fn jent_cpu_highest() callconv(.c) c_long;
+pub extern fn jent_thread_pin_to_cpu(cpu: c_ulong) callconv(.c) c_int;
+pub extern fn jent_notime_thread_create(ctx: *jent_notime_ctx, routine: jent_notime_start_routine, arg: ?*anyopaque) callconv(.c) c_int;
+pub extern fn jent_notime_thread_join(ctx: *jent_notime_ctx) callconv(.c) void;
 
 pub extern fn jent_os_random_bytes(buf: [*]u8, len: usize) callconv(.c) c_int;
 pub extern fn jent_os_random_supported() callconv(.c) c_int;
 
 pub extern fn jent_yield() callconv(.c) void;
 pub extern fn jent_get_nstime(out: *u64) callconv(.c) void;
+pub extern fn jent_set_mock_timer(cb: jent_mock_timer_cb, arg: ?*anyopaque) callconv(.c) c_int;
 
 // ============================================================================
 // Unit Tests: Constants, Inline Helpers, and C-ABI Struct & Bitfield Layout

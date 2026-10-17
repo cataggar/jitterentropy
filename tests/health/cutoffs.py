@@ -3,7 +3,7 @@
 #
 # Copyright (C) 2026, Markus Theil <theil.markus@gmail.com>
 #
-"""Recompute the health test cutoffs of src/jitterentropy-health.{c,h}.
+"""Recompute the health test cutoffs of src/health.zig and its C header.
 
 They were derived by hand with R and a SageMath script that is not in this
 tree, so a reader had no way to check them and a change of window size, alpha
@@ -242,7 +242,7 @@ def lag_local_table(alpha):
             for osr in range(1, MAX_OSR + 1)]
 
 
-# The name and type each table has in src/jitterentropy-health.c, in the
+# The name and type each table has in src/health.zig, in the
 # order the file declares them.
 TABLES = [
     ("jent_lag_global_cutoff_lookup", "unsigned int",
@@ -313,12 +313,12 @@ def format_rct():
 
 
 def source_tables(path):
-    """The tables as src/jitterentropy-health.c carries them."""
+    """The tables as src/health.zig carries them."""
     text = open(path).read()
     found = {}
 
     for match in re.finditer(
-            r"static const unsigned (?:int|short) (\w+)\[\d*\]\s*=\s*\{([^}]*)\}",
+            r"const (\w+) = \[\d+\](?:c_uint|c_ushort)\s*\{([^}]*)\}",
             text):
         found[match.group(1)] = [int(v) for v in
                                  re.findall(r"\d+", match.group(2))]
@@ -338,9 +338,9 @@ def main():
     parser = argparse.ArgumentParser(
         description="Recompute the Jitter RNG health test cutoff tables.")
     parser.add_argument("--check", metavar="FILE", nargs="?",
-                        const="src/jitterentropy-health.c",
+                        const="src/health.zig",
                         help="compare against FILE instead of printing the "
-                             "tables (default src/jitterentropy-health.c)")
+                             "tables (default src/health.zig)")
     parser.add_argument("--table", action="append", metavar="NAME",
                         help="only this table, repeatable")
     parser.add_argument("--dps", type=int, default=60,
@@ -372,7 +372,7 @@ def main():
 
     # The macros live in the header beside the source the tables come from.
     if not args.table:
-        macros = source_rct_macros(re.sub(r"\.c$", ".h", args.check))
+        macros = source_rct_macros("src/jitterentropy-health.h")
         for name, alpha in RCT_MACROS:
             computed = rct_cutoff(1, alpha)
             failed += report(name, macros.get(name) == computed,

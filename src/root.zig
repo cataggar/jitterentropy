@@ -1,6 +1,191 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
 pub const build_options = internal.build_options;
+pub const arch_atomic = @import("arch/atomic.zig");
+pub const arch_cache = @import("arch/cache.zig");
+pub const arch_fips = @import("arch/fips.zig");
+pub const arch_memory = @import("arch/memory.zig");
+pub const arch_ncpu = @import("arch/ncpu.zig");
+pub const arch_random = @import("arch/random.zig");
+pub const arch_sched = @import("arch/sched.zig");
+pub const arch_thread = @import("arch/thread.zig");
+pub const arch_timer = @import("arch/timer.zig");
+pub const sha3 = @import("sha3.zig");
+pub const gcd = @import("gcd.zig");
+pub const health = @import("health.zig");
+pub const noise = @import("noise.zig");
+pub const timer = @import("timer.zig");
+pub const base = @import("base.zig");
+pub const uuid = @import("uuid.zig");
+pub const status = @import("status.zig");
+
+fn isPublicApiSymbol(comptime name: []const u8) bool {
+    const names = .{
+        "jent_entropy_collector_alloc",
+        "jent_entropy_collector_bytes_output",
+        "jent_entropy_collector_flags",
+        "jent_entropy_collector_free",
+        "jent_entropy_collector_hashloops",
+        "jent_entropy_collector_health_failure",
+        "jent_entropy_collector_memsize",
+        "jent_entropy_collector_osr",
+        "jent_entropy_collector_read_invocations",
+        "jent_entropy_collector_reinitializations",
+        "jent_entropy_collector_uuid",
+        "jent_entropy_init",
+        "jent_entropy_init_ex",
+        "jent_entropy_set_notime_cpu",
+        "jent_entropy_switch_notime_impl",
+        "jent_notime_fini",
+        "jent_notime_init",
+        "jent_read_entropy",
+        "jent_read_entropy_safe",
+        "jent_secure_memory_supported",
+        "jent_selftest",
+        "jent_set_fips_failure_callback",
+        "jent_status",
+        "jent_version",
+    };
+    inline for (names) |public_name| {
+        if (std.mem.eql(u8, name, public_name)) return true;
+    }
+    return false;
+}
+
+fn symbolLinkage(comptime name: []const u8) std.builtin.GlobalLinkage {
+    if (std.mem.eql(u8, name, "jent_random_data")) return .weak;
+    if (build_options.weak_internals and !(isPublicApiSymbol(name) and build_options.export_public_api)) return .weak;
+    return .strong;
+}
+
+fn symbolVisibility(comptime name: []const u8) std.builtin.SymbolVisibility {
+    if (isPublicApiSymbol(name) and build_options.export_public_api) return .default;
+    if (build_options.export_internals) return .default;
+    return .hidden;
+}
+
+fn isExportedVariable(comptime name: []const u8) bool {
+    const names = .{
+        "jent_selftest_run",
+        "jent_common_timer_gcd",
+        "jent_notime_thread_builtin",
+        "jent_cache_cpuid_callback",
+        "jent_fi_cache_sysconf_mode",
+        "jent_fi_force_fips_enabled",
+        "jent_fi_fail_alloc",
+        "jent_fi_alloc_count",
+        "jent_fi_fail_mmap",
+        "jent_fi_fail_mprotect",
+        "jent_fi_mprotect_calls",
+        "jent_fi_fail_mlock",
+        "jent_fi_mlock_errno",
+        "jent_fi_sysconf_mode",
+        "jent_zeroize_inspect_hook",
+        "jent_fi_ncpu",
+        "jent_fi_fail_affinity",
+        "jent_fi_empty_affinity",
+        "jent_fi_fail_cpu_alloc",
+        "jent_fi_ncpu_sysconf_mode",
+        "jent_fi_fail_getrandom",
+        "jent_fi_fail_thread_create",
+        "jent_fi_fail_pthread_create",
+        "jent_fi_fail_pthread_attr",
+        "jent_fi_fail_thread_start",
+        "jent_fi_time_mode",
+        "jent_fi_time_value",
+    };
+    inline for (names) |variable_name| {
+        if (std.mem.eql(u8, name, variable_name)) return true;
+    }
+    return false;
+}
+
+fn declarationName(comptime declaration: anytype) []const u8 {
+    return switch (@typeInfo(@TypeOf(declaration))) {
+        .@"struct" => declaration.name,
+        else => declaration,
+    };
+}
+
+fn exportNamespaceFunctions(comptime namespace: type) void {
+    inline for (std.meta.declarations(namespace)) |declaration| {
+        const name = declarationName(declaration);
+        if (!std.mem.startsWith(u8, name, "jent_") and
+            !std.mem.eql(u8, name, "ensure_osr_is_at_least_minimal") and
+            !std.mem.eql(u8, name, "keccakf"))
+        {
+            continue;
+        }
+        if (isExportedVariable(name)) continue;
+        if (std.mem.eql(u8, name, "jent_random_data") and !build_options.export_random_data) continue;
+        const value = @field(namespace, name);
+        if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
+        @export(&value, .{
+            .name = name,
+            .linkage = symbolLinkage(name),
+            .visibility = symbolVisibility(name),
+        });
+    }
+}
+
+fn exportVariable(comptime name: []const u8, comptime variable: anytype) void {
+    @export(variable, .{
+        .name = name,
+        .linkage = if (build_options.weak_internals) .weak else .strong,
+        .visibility = if (build_options.export_internals) .default else .hidden,
+    });
+}
+
+comptime {
+    @setEvalBranchQuota(100_000);
+    exportNamespaceFunctions(arch_atomic);
+    exportNamespaceFunctions(arch_cache);
+    exportNamespaceFunctions(arch_fips);
+    exportNamespaceFunctions(arch_memory);
+    exportNamespaceFunctions(arch_ncpu);
+    exportNamespaceFunctions(arch_random);
+    exportNamespaceFunctions(arch_sched);
+    exportNamespaceFunctions(arch_thread);
+    exportNamespaceFunctions(arch_timer);
+    exportNamespaceFunctions(sha3);
+    exportNamespaceFunctions(gcd);
+    exportNamespaceFunctions(health);
+    exportNamespaceFunctions(noise);
+    exportNamespaceFunctions(timer);
+    exportNamespaceFunctions(base);
+    exportNamespaceFunctions(uuid);
+    exportNamespaceFunctions(status);
+
+    exportVariable("jent_selftest_run", &base.jent_selftest_run);
+    exportVariable("jent_common_timer_gcd", &gcd.jent_common_timer_gcd);
+    exportVariable("jent_notime_thread_builtin", &timer.jent_notime_thread_builtin);
+    exportVariable("jent_cache_cpuid_callback", &arch_cache.jent_cache_cpuid_callback);
+    exportVariable("jent_fi_cache_sysconf_mode", &arch_cache.jent_fi_cache_sysconf_mode);
+    exportVariable("sysfs_cpu_base", &arch_cache.sysfs_cpu_base);
+    exportVariable("proc_cpuinfo_path", &arch_cache.proc_cpuinfo_path);
+    exportVariable("jent_fi_force_fips_enabled", &arch_fips.jent_fi_force_fips_enabled);
+    exportVariable("jent_fi_fail_alloc", &arch_memory.jent_fi_fail_alloc);
+    exportVariable("jent_fi_alloc_count", &arch_memory.jent_fi_alloc_count);
+    exportVariable("jent_fi_fail_mmap", &arch_memory.jent_fi_fail_mmap);
+    exportVariable("jent_fi_fail_mprotect", &arch_memory.jent_fi_fail_mprotect);
+    exportVariable("jent_fi_mprotect_calls", &arch_memory.jent_fi_mprotect_calls);
+    exportVariable("jent_fi_fail_mlock", &arch_memory.jent_fi_fail_mlock);
+    exportVariable("jent_fi_mlock_errno", &arch_memory.jent_fi_mlock_errno);
+    exportVariable("jent_fi_sysconf_mode", &arch_memory.jent_fi_sysconf_mode);
+    exportVariable("jent_zeroize_inspect_hook", &arch_memory.jent_zeroize_inspect_hook);
+    exportVariable("jent_fi_ncpu", &arch_ncpu.jent_fi_ncpu);
+    exportVariable("jent_fi_fail_affinity", &arch_ncpu.jent_fi_fail_affinity);
+    exportVariable("jent_fi_empty_affinity", &arch_ncpu.jent_fi_empty_affinity);
+    exportVariable("jent_fi_fail_cpu_alloc", &arch_ncpu.jent_fi_fail_cpu_alloc);
+    exportVariable("jent_fi_ncpu_sysconf_mode", &arch_ncpu.jent_fi_ncpu_sysconf_mode);
+    exportVariable("jent_fi_fail_getrandom", &arch_random.jent_fi_fail_getrandom);
+    exportVariable("jent_fi_fail_thread_create", &arch_thread.jent_fi_fail_thread_create);
+    exportVariable("jent_fi_fail_pthread_create", &arch_thread.jent_fi_fail_pthread_create);
+    exportVariable("jent_fi_fail_pthread_attr", &arch_thread.jent_fi_fail_pthread_attr);
+    exportVariable("jent_fi_fail_thread_start", &arch_thread.jent_fi_fail_thread_start);
+    exportVariable("jent_fi_time_mode", &arch_timer.jent_fi_time_mode);
+    exportVariable("jent_fi_time_value", &arch_timer.jent_fi_time_value);
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +333,21 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(arch_atomic);
+    std.testing.refAllDecls(arch_cache);
+    std.testing.refAllDecls(arch_fips);
+    std.testing.refAllDecls(arch_memory);
+    std.testing.refAllDecls(arch_ncpu);
+    std.testing.refAllDecls(arch_random);
+    std.testing.refAllDecls(arch_sched);
+    std.testing.refAllDecls(arch_thread);
+    std.testing.refAllDecls(arch_timer);
+    std.testing.refAllDecls(sha3);
+    std.testing.refAllDecls(gcd);
+    std.testing.refAllDecls(health);
+    std.testing.refAllDecls(noise);
+    std.testing.refAllDecls(timer);
+    std.testing.refAllDecls(base);
+    std.testing.refAllDecls(uuid);
+    std.testing.refAllDecls(status);
 }
