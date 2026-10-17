@@ -1,0 +1,22 @@
+.{
+    .name = .jitterentropy,
+    .version = "3.8.0",
+    .fingerprint = 0xa482e5f550694078,
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "jitterentropy.h",
+        "version.lds",
+        "src",
+        "arch",
+        "linux_kernel",
+        "rngd",
+        "tests",
+        "LICENSE",
+        "LICENSE.bsd",
+        "LICENSE.gplv2",
+        "README.md",
+    },
+}

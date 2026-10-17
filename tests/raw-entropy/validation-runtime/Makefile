@@ -1,6 +1,9 @@
 # Compile Noise Source as user space application
 
-CC ?= gcc
+ifeq ($(origin CC),default)
+CC := zig cc
+endif
+CC ?= zig cc
 override CFLAGS +=-pedantic -Wall -Wextra -O2
 
 program_NAME := extractlsb

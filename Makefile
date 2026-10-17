@@ -1,6 +1,13 @@
 # Compile Noise Source as user space application
 
-CC ?= gcc
+ifeq ($(origin CC),default)
+CC := zig cc
+endif
+CC ?= zig cc
+ifeq ($(origin AR),default)
+AR := zig ar
+endif
+AR ?= zig ar
 #Hardening
 ENABLE_STACK_PROTECTOR ?= 1
 CFLAGS ?= -fwrapv --param ssp-buffer-size=4 -fvisibility=hidden -fPIE -Wcast-align -Wmissing-field-initializers -Wshadow -Wswitch-enum

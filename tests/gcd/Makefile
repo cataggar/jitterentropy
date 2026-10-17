@@ -2,7 +2,10 @@
 # Copyright (C) 2021 - 2026, Stephan Mueller <smueller@chronox.de>
 #
 
-CC		?= gcc
+ifeq ($(origin CC),default)
+CC		:= zig cc
+endif
+CC		?= zig cc
 CFLAGS		+= -Wextra -Wall -pedantic -fPIC -O2 -std=c11
 #Hardening
 CFLAGS		+= -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fwrapv --param ssp-buffer-size=4 -fvisibility=hidden -fPIE -Wconversion -Wcast-align -Wmissing-field-initializers -Wshadow -Wswitch-enum

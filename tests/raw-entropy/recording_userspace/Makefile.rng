@@ -1,6 +1,9 @@
 # Compile Noise Source as user space application
 
-CC ?= cc
+ifeq ($(origin CC),default)
+CC := zig cc
+endif
+CC ?= zig cc
 # "override" on every append, as the top level Makefile has: a plain += is
 # ignored for a variable set on the make command line, so "make CFLAGS=-g"
 # used to drop the include paths, -O0, the defines and the hardening. And once

@@ -11,7 +11,10 @@
 # tests/health carry, for a tree with no CMake.
 #
 
-CC		?= gcc
+ifeq ($(origin CC),default)
+CC		:= zig cc
+endif
+CC		?= zig cc
 # -O0 is mandatory, not a preference: the entropy core absorbed by the
 # unit-base programs refuses to compile at any other level (see the #error in
 # src/jitterentropy-base.c). -flto is dropped for the same reason.

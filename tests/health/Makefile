@@ -8,7 +8,10 @@
 # built first.
 #
 
-CC		?= gcc
+ifeq ($(origin CC),default)
+CC		:= zig cc
+endif
+CC		?= zig cc
 # -O0 is mandatory, as for the CMake build of this program: it absorbs
 # src/jitterentropy-health.c, which refuses to compile at any other level (see
 # the #error there). No _FORTIFY_SOURCE, which needs optimization, and no
