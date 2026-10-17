@@ -109,6 +109,18 @@ pub fn build(b: *std.Build) void {
         "Also build and install jitterentropy-rngd (Linux only, default: false)",
     ) orelse false;
 
+    const rngd_sbindir = b.option(
+        []const u8,
+        "rngd-sbindir",
+        "Path to sbin directory in jitterentropy.service ExecStart (default: /usr/local/sbin)",
+    ) orelse "/usr/local/sbin";
+
+    const raw_memory_access = b.option(
+        bool,
+        "raw-memory-access",
+        "Build jitterentropy-hashtime to measure raw memory access instead of SHA3 hash loop (default: false)",
+    ) orelse false;
+
     const opts = BuildOptions{
         .internal_timer = internal_timer,
         .mock_timer = mock_timer,
@@ -143,6 +155,26 @@ pub fn build(b: *std.Build) void {
     }
     lib.installHeader(b.path("jitterentropy.h"), "jitterentropy.h");
     b.installArtifact(lib);
+
+    const lib_manpages: []const []const u8 = &.{
+        "jitterentropy.3",
+        "jent_entropy_collector_alloc.3",
+        "jent_entropy_init.3",
+        "jent_entropy_switch_notime_impl.3",
+        "jent_read_entropy.3",
+        "jent_set_fips_failure_callback.3",
+        "jent_status.3",
+    };
+    for (lib_manpages) |page| {
+        const src_page = std.fmt.allocPrint(b.allocator, "doc/{s}", .{page}) catch @panic("OOM");
+        const dest_page = std.fmt.allocPrint(b.allocator, "share/man/man3/{s}", .{page}) catch @panic("OOM");
+        b.installFile(src_page, dest_page);
+    }
+    if (os_tag == .linux) {
+        b.installFile("doc/jitter_rng.4", "share/man/man4/jitter_rng.4");
+    }
+
+    const test_step = b.step("test", "Run jitterentropy test suite");
 
     if (enable_recording) {
         const rec_mod = b.createModule(.{
@@ -181,6 +213,39 @@ pub fn build(b: *std.Build) void {
             "jitterentropy-record.h",
         );
         b.installArtifact(rec_lib);
+        b.installFile(
+            "doc/jitterentropy-record.3",
+            "share/man/man3/jitterentropy-record.3",
+        );
+
+        const colink_mod = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        configureIncludePaths(b, colink_mod);
+        colink_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
+        configureCommonDefines(colink_mod, target, opts, linkage);
+        if (os_tag == .windows and linkage == .static) {
+            colink_mod.addCMacro("JENT_RECORD_STATIC_LIB", "1");
+        }
+        colink_mod.addCSourceFile(.{
+            .file = b.path("tests/raw-entropy/recording_library/record-colink.c"),
+            .flags = c_flags,
+        });
+        colink_mod.linkLibrary(lib);
+        colink_mod.linkLibrary(rec_lib);
+        const colink_exe = b.addExecutable(.{
+            .name = "record-colink",
+            .root_module = colink_mod,
+        });
+        const colink_wf = b.addWriteFiles();
+        _ = colink_wf.add(".keep", "");
+        const run_colink = b.addRunArtifact(colink_exe);
+        run_colink.setCwd(colink_wf.getDirectory());
+        run_colink.addArg("record-colink");
+        run_colink.expectExitCode(0);
+        test_step.dependOn(&run_colink.step);
     }
 
     if (enable_kernel_lib) {
@@ -237,6 +302,14 @@ pub fn build(b: *std.Build) void {
             .root_module = jitter_rng_mod,
         });
         b.installArtifact(jitter_rng_exe);
+        b.installFile(
+            "doc/jitterentropy-kernel.3",
+            "share/man/man3/jitterentropy-kernel.3",
+        );
+        b.installFile(
+            "doc/jitter_rng.1",
+            "share/man/man1/jitter_rng.1",
+        );
     }
 
     if (enable_rngd) {
@@ -260,7 +333,36 @@ pub fn build(b: *std.Build) void {
             .name = "jitterentropy-rngd",
             .root_module = rngd_mod,
         });
-        b.installArtifact(rngd_exe);
+        const install_rngd = b.addInstallArtifact(rngd_exe, .{
+            .dest_dir = .{ .override = .{ .custom = "sbin" } },
+        });
+        b.getInstallStep().dependOn(&install_rngd.step);
+        b.installFile(
+            "doc/jitterentropy-rngd.1",
+            "share/man/man1/jitterentropy-rngd.1",
+        );
+
+        const service_template = @embedFile("rngd/jitterentropy.service.in");
+        const service_rendered = std.mem.replaceOwned(
+            u8,
+            b.allocator,
+            service_template,
+            "@PATH@",
+            rngd_sbindir,
+        ) catch @panic("OOM");
+        const rngd_wf = b.addWriteFiles();
+        const service_file = rngd_wf.add("jitterentropy.service", service_rendered);
+        b.getInstallStep().dependOn(
+            &b.addInstallFile(service_file, "lib/systemd/system/jitterentropy.service").step,
+        );
+
+        const run_rngd_ver = b.addRunArtifact(rngd_exe);
+        run_rngd_ver.addArg("--version");
+        run_rngd_ver.expectExitCode(0);
+        run_rngd_ver.expectStdErrEqual(
+            "Version jitterentropy-rngd 3.8.0\nVersion Jitterentropy Core 3080000\n",
+        );
+        test_step.dependOn(&run_rngd_ver.step);
     }
 
     const gcd_exe = addAbsorbingExecutable(b, "gcd", target, optimize, opts, c_flags, &.{
@@ -331,7 +433,22 @@ pub fn build(b: *std.Build) void {
             true,
             os_tag != .windows,
         );
+        if (raw_memory_access) {
+            hashtime_exe.root_module.addCMacro("JENT_TEST_MEASURE_RAW_MEMORY_ACCESS", "1");
+        }
         b.installArtifact(hashtime_exe);
+
+        const tool_manpages: []const []const u8 = &.{
+            "jitterentropy-rng.1",
+            "jitterentropy-osr.1",
+            "jitterentropy-hashtime.1",
+            "jitterentropy-flags.1",
+        };
+        for (tool_manpages) |page| {
+            const src_page = std.fmt.allocPrint(b.allocator, "doc/{s}", .{page}) catch @panic("OOM");
+            const dest_page = std.fmt.allocPrint(b.allocator, "share/man/man1/{s}", .{page}) catch @panic("OOM");
+            b.installFile(src_page, dest_page);
+        }
 
         const cpuinfo_exe = addToolExecutable(
             b,
@@ -417,8 +534,6 @@ pub fn build(b: *std.Build) void {
             b.installArtifact(fields_exe);
         }
     }
-
-    const test_step = b.step("test", "Run jitterentropy test suite");
 
     const run_gcd = b.addRunArtifact(gcd_exe);
     run_gcd.expectExitCode(0);

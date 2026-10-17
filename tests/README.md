@@ -7,7 +7,7 @@ directories:
   entropy data required for the SP800-90B analysis. Its `recording_library`
   is `libjitterentropy-record`, the recording as a library for programs where
   none of the recording tools can run, built only with
-  `-DENABLE_RECORDING=ON` (CMake) or `ENABLE_RECORDING=1` (make)
+  `-DENABLE_RECORDING=ON` (CMake) or `-Drecording=true` (`zig build`)
 
 * `gcd`: Self test of the GCD analysis applied to the time deltas
 
@@ -236,9 +236,8 @@ verifies that the expected error is reported *and* that no unrelated health
 test reported one, so the failure is attributed to the test under examination.
 
 Both the common and the NTG.1 cutoff configurations are covered. The program
-is `jitterentropy-health` in the CMake build (under `tests/health/` of the
-build directory, and installed with the tools) and `tests/health/health` when
-built with its own Makefile. It takes the oversampling rate as an optional
+is `jitterentropy-health` in the CMake and Zig builds (installed with the
+tools). It takes the oversampling rate as an optional
 argument, defaulting to `JENT_MIN_OSR`; `-h` / `--help` prints its usage:
 
 ```

@@ -5,7 +5,7 @@ name: Nix
 
 on:
   push:
-    branches: [ master ]
+    branches: [ zig, master ]
   pull_request:
   workflow_dispatch:
 

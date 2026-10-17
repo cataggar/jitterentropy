@@ -14,8 +14,8 @@ in
     pkgs.stdenv.mkDerivation {
       name = "jitterentropy-raw-entropy";
       src = self;
-      nativeBuildInputs = [ pkgs.sp800-90b-entropyassessment ];
-      # As for toolsFor: Makefile.hashtime builds at -O0.
+      nativeBuildInputs = [ pkgs.sp800-90b-entropyassessment pkgs.zig ];
+      # As for toolsFor: build.zig compiles the timed core at -O0.
       hardeningDisable = [ "fortify" "fortify3" ];
       dontConfigure = true;
       # The full SP800-90B sizes the scripts default to, 1000000 samples
@@ -23,6 +23,7 @@ in
       buildPhase = ''
         runHook preBuild
 
+        export ZIG_GLOBAL_CACHE_DIR="$TMPDIR/zig-cache"
         data=$TMPDIR/measurements
         raw=$PWD/tests/raw-entropy
 
@@ -35,7 +36,7 @@ in
 
         # With RESULTS_DIR given, the caller builds extractlsb.
         cd $raw/validation-restart
-        make
+        (cd ../.. && zig build -Dtools=true)
         # The restart sanity check fails on about 1% of good data, so a
         # failure gets one more try on a new recording.
         for attempt in 1 2; do
@@ -93,7 +94,7 @@ in
         virtualisation.memorySize = 2048;
         virtualisation.diskSize = 4096;
         # The scripts build getrawentropy and extractlsb themselves.
-        environment.systemPackages = with pkgs; [ gcc gnumake ];
+        environment.systemPackages = with pkgs; [ gcc gnumake zig ];
 
         # boottime_test_record.service with the paths NixOS has; DEBUGFS_FILE
         # and the like come from the EnvironmentFile.

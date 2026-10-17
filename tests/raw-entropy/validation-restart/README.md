@@ -43,9 +43,9 @@ LOGFILE: Name of the log file. The default is $RESULTS_DIR/processdata.log.
 EATOOL: Path of the program used from the Entropy Assessment restart tool
 (usually, ea_restart).
 
-BUILD_EXTRACT: Indicates whether the script will rebuild the extractlsb program
-from scratch (and remove it again on exit); with "no" it is not built at all
-and has to be built with `make` beforehand. The default is "yes";
+BUILD_EXTRACT: Indicates whether the script will build the extractlsb program;
+with "no" it is only built if not already present in `zig-out/bin/extractlsb`
+(or `zig build -Dtools=true` can be run beforehand). The default is "yes";
 processdata.sh sets "no" when its caller gives RESULTS_DIR, which is then
 expected to have built extractlsb itself, and processdata_ntg1.sh builds it
 for its first set only.

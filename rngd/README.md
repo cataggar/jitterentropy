@@ -17,15 +17,14 @@ library. Here it links the library of this tree and shares its version;
 	cmake --build build
 	cmake --install build
 
-or, linking the library's archive into the daemon,
+or, with Zig,
 
-	make ENABLE_RNGD=1
-	make install ENABLE_RNGD=1
+	zig build -Drngd=true --prefix /usr/local
 
 Both install the daemon to `sbin` and the systemd unit `jitterentropy.service`;
-`make install` installs its man page as well. The unit goes to
-`lib/systemd/system` below the prefix; `-DJENT_SYSTEMD_UNITDIR=<dir>`
-(`JENT_SYSTEMD_UNITDIR=<dir>` with make) names another directory.
+`zig build` installs its man page as well. The unit goes to
+`lib/systemd/system` below the prefix; `-DJENT_SYSTEMD_UNITDIR=<dir>` with
+CMake names another directory.
 
 ## Systemd unit
 

@@ -81,8 +81,8 @@ be recorded and analyzed separately.
 
 The tool `jitterentropy-cpuinfo` lists the cores to choose from:
 
-	make -f Makefile.cpuinfo
-	./jitterentropy-cpuinfo
+	zig build -Dtools=true
+	./zig-out/bin/jitterentropy-cpuinfo
 
 For every CPU it reports the vendor and the model, the core type as reported
 by the system, the topology and the data cache sizes together with the number
@@ -244,35 +244,35 @@ the library code from its `src/` and `arch/` directories, and
 
 The raw entropy recording tool is compiled with:
 
-	make -f Makefile.hashtime
+	zig build -Dtools=true
 
 The raw entropy data is recorded with the following command, which writes
 `<rounds per repeat>` time deltas, one per line, into each of the
 `<number of repeats>` files `<filename>-0001.data`, `<filename>-0002.data`, ...:
 
-	./jitterentropy-hashtime <rounds per repeat> <number of repeats> <filename> [options]
+	./zig-out/bin/jitterentropy-hashtime <rounds per repeat> <number of repeats> <filename> [options]
 
 For example, the runtime data set and the restart data sets are recorded with:
 
-	./jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise
-	./jitterentropy-hashtime 1000 1000 ../results-measurements/jent-raw-noise-restart
+	./zig-out/bin/jitterentropy-hashtime 1000000 1 ../results-measurements/jent-raw-noise
+	./zig-out/bin/jitterentropy-hashtime 1000 1000 ../results-measurements/jent-raw-noise-restart
 
 Invoke the tool without arguments to list its options; the man pages
 `jitterentropy-hashtime.1`, `jitterentropy-rng.1` and `jitterentropy-osr.1` in
 `doc/` describe them. `jitterentropy-flags` turns the same options, or `JENT_*`
 names, into the flags number and back (`jitterentropy-flags.1`).
 
-In addition, the collection of output data from the Jitter RNG must be
-compiled with the following command:
+In addition, the collection of output data from the Jitter RNG is built by the
+same command:
 
-	make -f Makefile.rng
+	zig build -Dtools=true
 
 To generate output data from the Jitter RNG for validation, invoke the
 following command, which writes the given number of 256 bit blocks to stdout
 (in hexadecimal with `--hex`, otherwise binary) and the status of the entropy
 collector to stderr:
 
-	./jitterentropy-rng <number of blocks> [options] > ../results-measurements/jent-conditioned.data
+	./zig-out/bin/jitterentropy-rng <number of blocks> [options] > ../results-measurements/jent-conditioned.data
 
 ## NTG.1 Recording
 
