@@ -26,7 +26,7 @@ None prints anything. The library carries a copy of `libjitterentropy` of
 its own and exports nothing but these functions, so it links beside
 `libjitterentropy`, shared or static; `record-colink.c` tests that. The build
 offers it only when asked to - `-DENABLE_RECORDING=ON` with CMake,
-`ENABLE_RECORDING=1` with make - shared or static as the library itself.
+`-Drecording=true` with `zig build` - shared or static as the library itself.
 `jitterentropy-record-lib.c` compiles the copy and the recording as one
 translation unit, a private copy (`JENT_PRIVATE_COMPILE`) in which every
 function of the library is static, so both the archive and the shared library

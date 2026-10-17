@@ -39,20 +39,25 @@ That header is the whole of the API: on the platforms whose linker takes a
 version script the shared library exports exactly the functions declared in
 it, listed in `version.lds`, and nothing else. The list is checked against the
 header when CMake configures, so the two cannot drift apart unnoticed there;
-the Makefile applies the list without that check.
+`build.zig` applies the list as well.
 
 # Build Instructions
 
-To generate the shared library `make` followed by `make install`, which
-installs the library, its header and the man pages of the library - on Linux
-jitter_rng.4 as well - below `$(PREFIX)/share/man`; `make install-static` adds
-the archive. The pkg-config file and the CMake package for
-`find_package(jitterentropy)` are installed by the CMake build only, which
-installs jitterentropy.3 alone of the man pages. `ENABLE_RECORDING=1` and, on
-Linux, `ENABLE_RNGD=1` add what the CMake options of the same name add, and the
-man page of each.
+To build and install with Zig (`build.zig`):
 
-Besides the Makefile based build system, CMake support is also provided.
+```sh
+zig build                                    # static library + tools under zig-out/
+zig build -Dlinkage=dynamic                  # shared library + tools under zig-out/
+zig build -Drecording=true -Drngd=true       # add libjitterentropy-record and jitterentropy-rngd
+zig build test                               # run the unit, GCD, health, flags, fuzz, and link tests
+```
+
+`zig build` installs the library, `jitterentropy.h`, the tools, and the man
+pages below the install prefix (`zig-out` by default, or `--prefix <dir>`).
+`-Drecording=true` and, on Linux, `-Drngd=true` and `-Dkernel-lib=true` add
+what the CMake options of the same name add, along with the man page of each.
+
+Besides `build.zig`, CMake support is also provided.
 This may ease cross compiling or setting build options, like:
 
 ```sh
@@ -160,11 +165,9 @@ ctest --test-dir build -j "$(nproc)"   # in parallel
 On a multi-configuration generator such as Visual Studio, name the
 configuration that was built: `ctest --test-dir build -C Release`.
 
-`tests/unit`, `tests/health` and `tests/gcd` also carry a standalone Makefile
-for trees without CMake: `make -C tests/unit check` and
-`make -C tests/health check`. The fuzzing harnesses (`tests/fuzz`), the
-character device tests (`tests/chardev`) and the linking tests
-(`tests/linking`) are built by CMake only.
+With Zig, `zig build test` builds and runs the deterministic test suite, the
+standalone fuzzing harnesses (`tests/fuzz`), and the linking test
+(`tests/linking`).
 
 See `tests/README.md` for what the individual test programs cover.
 

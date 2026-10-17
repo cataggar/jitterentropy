@@ -53,7 +53,8 @@ MAX_EVENTS=1000
 
 INPUTCONSOLIDATED="$RESULTS_DIR/jent-raw-noise-restart-consolidated.data"
 
-EXTRACT="extractlsb"
+ROOTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+EXTRACT=${EXTRACT:-"$ROOTDIR/zig-out/bin/extractlsb"}
 
 if [ ! -d $ENTROPYDATA_DIR ]
 then
@@ -76,14 +77,10 @@ then
 	exit 1
 fi
 
-
-trap "if [ "$BUILD_EXTRACT" = "yes" ]; then make clean; fi" 0 1 2 3 15
-
-if [ "$BUILD_EXTRACT" = "yes" ]
+if [ "$BUILD_EXTRACT" = "yes" ] || [ ! -x "$EXTRACT" ]
 then
 	echo "Building $EXTRACT ..."
-	make clean
-	make
+	(cd "$ROOTDIR" && zig build -Dtools=true)
 fi
 
 if [ ! -x $EXTRACT ]
@@ -135,7 +132,7 @@ do
 		mask=${item%:*}
 		bits=${item#*:}
 
-		if ! ./$EXTRACT $file $filepath.${mask}bitout.data $((MAX_EVENTS * restarts)) $mask 2>&1 | tee -a $LOGFILE
+		if ! $EXTRACT $file $filepath.${mask}bitout.data $((MAX_EVENTS * restarts)) $mask 2>&1 | tee -a $LOGFILE
 		then
 			echo "ERROR: Extraction of $file (mask $mask) failed" | tee -a $LOGFILE
 			exit 1
