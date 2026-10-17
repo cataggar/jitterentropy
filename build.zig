@@ -433,12 +433,14 @@ pub fn build(b: *std.Build) void {
         if (os_tag != .linux) {
             std.debug.panic("-Drngd=true requires a Linux target", .{});
         }
-        const rngd_mod = createCModule(b, target, optimize, opts, null);
-        configureIncludePaths(b, rngd_mod);
-        configureCommonDefines(b, rngd_mod, target, opts, linkage, false);
-        rngd_mod.addCSourceFile(.{
-            .file = b.path("rngd/jitterentropy-rngd.c"),
-            .flags = c_flags,
+        const rngd_mod = b.createModule(.{
+            .root_source_file = b.path("rngd/jitterentropy-rngd.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .sanitize_c = if (opts.sanitizers) .full else null,
+            .sanitize_thread = if (opts.tsan) true else null,
+            .omit_frame_pointer = if (opts.sanitizers or opts.tsan or opts.coverage) false else null,
         });
         rngd_mod.linkLibrary(lib);
         configureInstallRPath(rngd_mod, os_tag, linkage);
@@ -1383,8 +1385,6 @@ fn verifyRecordingSources(
 
 fn addEfiTargets(b: *std.Build) void {
     const wf = b.addWriteFiles();
-    _ = wf.add("include/efi.h", efi_h_source);
-    _ = wf.add("include/efilib.h", efilib_h_source);
     _ = wf.add("include/sys/types.h", "typedef __PTRDIFF_TYPE__ ssize_t;\n");
     _ = wf.add("include/sys/stat.h", "#pragma once\n");
     _ = wf.add("include/fcntl.h", "#pragma once\n");
@@ -1394,7 +1394,6 @@ fn addEfiTargets(b: *std.Build) void {
     _ = wf.add("include/stdlib.h", efi_stdlib_h_source);
     _ = wf.add("include/string.h", efi_string_h_source);
     _ = wf.add("include/stdio.h", efi_stdio_h_source);
-    const efi_support_c = wf.add("efi_support.c", efi_support_c_source);
     const efi_inc_dir = wf.getDirectory().path(b, "include");
 
     const EfiTargetSpec = struct {
@@ -1442,6 +1441,7 @@ fn addEfiTargets(b: *std.Build) void {
         const efi_flags = efi_flags_list.toOwnedSlice(b.allocator) catch @panic("OOM");
 
         const efi_mod = b.createModule(.{
+            .root_source_file = b.path("tests/efi/jitterentropy-efi.zig"),
             .target = uefi_target,
             .optimize = .Debug,
             .link_libc = false,
@@ -1455,14 +1455,6 @@ fn addEfiTargets(b: *std.Build) void {
         efi_mod.addCMacro("JENT_CONF_ENABLE_INTERNAL_TIMER", "1");
         efi_mod.addCSourceFiles(.{
             .files = lib_c_sources,
-            .flags = efi_flags,
-        });
-        efi_mod.addCSourceFile(.{
-            .file = b.path("tests/efi/jitterentropy-efi.c"),
-            .flags = efi_flags,
-        });
-        efi_mod.addCSourceFile(.{
-            .file = efi_support_c,
             .flags = efi_flags,
         });
 
@@ -1703,6 +1695,7 @@ const efi_string_h_source =
     \\void *memcpy(void *dst, const void *src, size_t n);
     \\void *memset(void *dst, int c, size_t n);
     \\size_t strlen(const char *s);
+    \\int strcmp(const char *s1, const char *s2);
 ;
 
 const efi_stdio_h_source =
@@ -1711,268 +1704,3 @@ const efi_stdio_h_source =
     \\int snprintf(char *buf, size_t size, const char *fmt, ...);
 ;
 
-const efi_h_source =
-    \\#pragma once
-    \\#include <stdarg.h>
-    \\#include <stddef.h>
-    \\#include <stdint.h>
-    \\
-    \\#if defined(__x86_64__)
-    \\#define EFIAPI __attribute__((ms_abi))
-    \\#else
-    \\#define EFIAPI
-    \\#endif
-    \\
-    \\typedef __WCHAR_TYPE__ CHAR16;
-    \\typedef size_t UINTN;
-    \\typedef uint64_t UINT64;
-    \\typedef int64_t INT64;
-    \\typedef size_t EFI_STATUS;
-    \\typedef void *EFI_HANDLE;
-    \\
-    \\#define EFI_SUCCESS ((EFI_STATUS)0)
-    \\#define EFI_DEVICE_ERROR ((EFI_STATUS)((1ULL << 63) | 7ULL))
-    \\#define EFI_OUT_OF_RESOURCES ((EFI_STATUS)((1ULL << 63) | 9ULL))
-    \\
-    \\typedef enum {
-    \\    EfiResetCold = 0,
-    \\    EfiResetWarm = 1,
-    \\    EfiResetShutdown = 2,
-    \\    EfiResetPlatformSpecific = 3
-    \\} EFI_RESET_TYPE;
-    \\
-    \\typedef enum {
-    \\    EfiReservedMemoryType = 0,
-    \\    EfiLoaderCode = 1,
-    \\    EfiLoaderData = 2,
-    \\    EfiBootServicesCode = 3,
-    \\    EfiBootServicesData = 4
-    \\} EFI_MEMORY_TYPE;
-    \\
-    \\typedef struct {
-    \\    uint64_t Signature;
-    \\    uint32_t Revision;
-    \\    uint32_t HeaderSize;
-    \\    uint32_t CRC32;
-    \\    uint32_t Reserved;
-    \\} EFI_TABLE_HEADER;
-    \\
-    \\struct _SIMPLE_TEXT_OUTPUT_INTERFACE;
-    \\typedef EFI_STATUS (EFIAPI *EFI_TEXT_RESET)(struct _SIMPLE_TEXT_OUTPUT_INTERFACE *This, uint8_t ExtendedVerification);
-    \\typedef EFI_STATUS (EFIAPI *EFI_TEXT_OUTPUT_STRING)(struct _SIMPLE_TEXT_OUTPUT_INTERFACE *This, const CHAR16 *String);
-    \\
-    \\typedef struct _SIMPLE_TEXT_OUTPUT_INTERFACE {
-    \\    EFI_TEXT_RESET Reset;
-    \\    EFI_TEXT_OUTPUT_STRING OutputString;
-    \\    void *TestString;
-    \\    void *QueryMode;
-    \\    void *SetMode;
-    \\    void *SetAttribute;
-    \\    void *ClearScreen;
-    \\    void *SetCursorPosition;
-    \\    void *EnableCursor;
-    \\    void *Mode;
-    \\} SIMPLE_TEXT_OUTPUT_INTERFACE;
-    \\
-    \\typedef EFI_STATUS (EFIAPI *EFI_ALLOCATE_POOL)(EFI_MEMORY_TYPE PoolType, UINTN Size, void **Buffer);
-    \\typedef EFI_STATUS (EFIAPI *EFI_FREE_POOL)(void *Buffer);
-    \\
-    \\typedef struct {
-    \\    EFI_TABLE_HEADER Hdr;
-    \\    void *RaiseTPL;
-    \\    void *RestoreTPL;
-    \\    void *AllocatePages;
-    \\    void *FreePages;
-    \\    void *GetMemoryMap;
-    \\    EFI_ALLOCATE_POOL AllocatePool;
-    \\    EFI_FREE_POOL FreePool;
-    \\} EFI_BOOT_SERVICES;
-    \\
-    \\typedef void (EFIAPI *EFI_RESET_SYSTEM)(EFI_RESET_TYPE ResetType, EFI_STATUS ResetStatus, UINTN DataSize, CHAR16 *ResetData);
-    \\
-    \\typedef struct {
-    \\    EFI_TABLE_HEADER Hdr;
-    \\    void *GetTime;
-    \\    void *SetTime;
-    \\    void *GetWakeupTime;
-    \\    void *SetWakeupTime;
-    \\    void *SetVirtualAddressMap;
-    \\    void *ConvertPointer;
-    \\    void *GetVariable;
-    \\    void *GetNextVariableName;
-    \\    void *SetVariable;
-    \\    void *GetNextHighMonotonicCount;
-    \\    EFI_RESET_SYSTEM ResetSystem;
-    \\} EFI_RUNTIME_SERVICES;
-    \\
-    \\typedef struct {
-    \\    EFI_TABLE_HEADER Hdr;
-    \\    CHAR16 *FirmwareVendor;
-    \\    uint32_t FirmwareRevision;
-    \\    EFI_HANDLE ConsoleInHandle;
-    \\    void *ConIn;
-    \\    EFI_HANDLE ConsoleOutHandle;
-    \\    SIMPLE_TEXT_OUTPUT_INTERFACE *ConOut;
-    \\    EFI_HANDLE StandardErrorHandle;
-    \\    SIMPLE_TEXT_OUTPUT_INTERFACE *StdErr;
-    \\    EFI_RUNTIME_SERVICES *RuntimeServices;
-    \\    EFI_BOOT_SERVICES *BootServices;
-    \\    UINTN NumberOfTableEntries;
-    \\    void *ConfigurationTable;
-    \\} EFI_SYSTEM_TABLE;
-    \\
-    \\#define uefi_call_wrapper(func, va_num, ...) func(__VA_ARGS__)
-;
-
-const efilib_h_source =
-    \\#pragma once
-    \\#include <efi.h>
-    \\
-    \\extern EFI_RUNTIME_SERVICES *RT;
-    \\
-    \\void InitializeLib(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable);
-    \\void *AllocatePool(UINTN Size);
-    \\void FreePool(void *Buffer);
-    \\UINTN Print(const CHAR16 *fmt, ...);
-;
-
-const efi_support_c_source =
-    \\#include <efi.h>
-    \\#include <efilib.h>
-    \\#include <stdarg.h>
-    \\
-    \\static EFI_SYSTEM_TABLE *ST = NULL;
-    \\static EFI_BOOT_SERVICES *BS = NULL;
-    \\EFI_RUNTIME_SERVICES *RT = NULL;
-    \\
-    \\void InitializeLib(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
-    \\    (void)ImageHandle;
-    \\    ST = SystemTable;
-    \\    BS = SystemTable ? SystemTable->BootServices : NULL;
-    \\    RT = SystemTable ? SystemTable->RuntimeServices : NULL;
-    \\}
-    \\
-    \\void *AllocatePool(UINTN Size) {
-    \\    void *p = NULL;
-    \\    if (!BS || BS->AllocatePool(EfiBootServicesData, Size, &p) != EFI_SUCCESS)
-    \\        return NULL;
-    \\    return p;
-    \\}
-    \\
-    \\void FreePool(void *Buffer) {
-    \\    if (BS && Buffer)
-    \\        BS->FreePool(Buffer);
-    \\}
-    \\
-    \\void *memcpy(void *dst, const void *src, size_t n) {
-    \\    uint8_t *d = (uint8_t *)dst;
-    \\    const uint8_t *s = (const uint8_t *)src;
-    \\    for (size_t i = 0; i < n; i++) d[i] = s[i];
-    \\    return dst;
-    \\}
-    \\
-    \\void *memset(void *dst, int c, size_t n) {
-    \\    uint8_t *d = (uint8_t *)dst;
-    \\    for (size_t i = 0; i < n; i++) d[i] = (uint8_t)c;
-    \\    return dst;
-    \\}
-    \\
-    \\static void efi_putc(CHAR16 ch, CHAR16 *buf, size_t *pos, size_t cap) {
-    \\    if (ch == L'\n') {
-    \\        if (*pos + 2 >= cap && ST && ST->ConOut) {
-    \\            buf[*pos] = 0;
-    \\            ST->ConOut->OutputString(ST->ConOut, buf);
-    \\            *pos = 0;
-    \\        }
-    \\        buf[(*pos)++] = L'\r';
-    \\    }
-    \\    if (*pos + 1 >= cap && ST && ST->ConOut) {
-    \\        buf[*pos] = 0;
-    \\        ST->ConOut->OutputString(ST->ConOut, buf);
-    \\        *pos = 0;
-    \\    }
-    \\    buf[(*pos)++] = ch;
-    \\}
-    \\
-    \\static void efi_put_uint(uint64_t val, unsigned int base, int width, CHAR16 pad, CHAR16 *buf, size_t *pos, size_t cap) {
-    \\    CHAR16 tmp[32];
-    \\    int n = 0;
-    \\    do {
-    \\        unsigned int d = (unsigned int)(val % base);
-    \\        tmp[n++] = (CHAR16)(d < 10 ? (L'0' + d) : (L'a' + (d - 10)));
-    \\        val /= base;
-    \\    } while (val > 0);
-    \\    while (n < width) {
-    \\        efi_putc(pad, buf, pos, cap);
-    \\        width--;
-    \\    }
-    \\    while (n > 0) {
-    \\        efi_putc(tmp[--n], buf, pos, cap);
-    \\    }
-    \\}
-    \\
-    \\UINTN Print(const CHAR16 *fmt, ...) {
-    \\    CHAR16 buf[256];
-    \\    size_t pos = 0;
-    \\    va_list ap;
-    \\    va_start(ap, fmt);
-    \\    for (; *fmt; fmt++) {
-    \\        if (*fmt != L'%') {
-    \\            efi_putc(*fmt, buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\            continue;
-    \\        }
-    \\        fmt++;
-    \\        CHAR16 pad = L' ';
-    \\        if (*fmt == L'0') {
-    \\            pad = L'0';
-    \\            fmt++;
-    \\        }
-    \\        int width = 0;
-    \\        while (*fmt >= L'0' && *fmt <= L'9') {
-    \\            width = width * 10 + (int)(*fmt - L'0');
-    \\            fmt++;
-    \\        }
-    \\        if (*fmt == L'c') {
-    \\            CHAR16 c = (CHAR16)va_arg(ap, int);
-    \\            efi_putc(c, buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\        } else if (*fmt == L's') {
-    \\            const CHAR16 *s = va_arg(ap, const CHAR16 *);
-    \\            if (!s) s = L"(null)";
-    \\            while (*s) efi_putc(*s++, buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\        } else if (*fmt == L'd') {
-    \\            int v = va_arg(ap, int);
-    \\            uint64_t u;
-    \\            if (v < 0) {
-    \\                efi_putc(L'-', buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\                u = (uint64_t)(-(int64_t)v);
-    \\            } else {
-    \\                u = (uint64_t)v;
-    \\            }
-    \\            efi_put_uint(u, 10, width, pad, buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\        } else if (*fmt == L'u') {
-    \\            unsigned int v = va_arg(ap, unsigned int);
-    \\            efi_put_uint(v, 10, width, pad, buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\        } else if (*fmt == L'x') {
-    \\            unsigned int v = va_arg(ap, unsigned int);
-    \\            efi_put_uint(v, 16, width, pad, buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\        } else if (*fmt) {
-    \\            efi_putc(*fmt, buf, &pos, sizeof(buf) / sizeof(buf[0]));
-    \\        } else {
-    \\            break;
-    \\        }
-    \\    }
-    \\    va_end(ap);
-    \\    if (pos > 0 && ST && ST->ConOut) {
-    \\        buf[pos] = 0;
-    \\        ST->ConOut->OutputString(ST->ConOut, buf);
-    \\    }
-    \\    return pos;
-    \\}
-    \\
-    \\EFI_STATUS EFIAPI efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable);
-    \\EFI_STATUS EFIAPI EfiMain(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
-    \\    return efi_main(ImageHandle, SystemTable);
-    \\}
-    \\
-    \\void __chkstk(void) {}
-;
