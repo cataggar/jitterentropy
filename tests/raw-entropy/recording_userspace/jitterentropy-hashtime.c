@@ -22,7 +22,7 @@
 #endif
 
 /*
- * jent_entropy_collector_alloc_raw() of the absorbed jitterentropy-base.c,
+ * jent_entropy_collector_alloc_raw() of the linked base.zig,
  * for the recording of jitterentropy-record.c below.
  */
 #define JENT_RAW_COLLECTOR

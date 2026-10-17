@@ -22,7 +22,7 @@
 #include "jitterentropy-timer.h"
 #include "arch/jitterentropy-arch-thread.h"
 
-/* As in jitterentropy-base.c: the entropy core must not be optimized. */
+/* As in base.zig: the entropy core must not be optimized. */
 #ifdef __OPTIMIZE__
  #error "The CPU Jitter random number generator must not be compiled with optimizations. See documentation. Use the compiler switch -O0 for compiling the entropy core."
 #endif

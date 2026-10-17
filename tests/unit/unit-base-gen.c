@@ -1,6 +1,5 @@
 /*
- * Jitter RNG: unit tests for src/jitterentropy-base.c and
- * src/jitterentropy-status.c
+ * Jitter RNG: unit tests for src/base.zig and src/status.zig
  *
  * Copyright (C) 2026, Stephan Mueller <smueller@chronox.de>
  * Copyright (C) 2026, Markus Theil <theil.markus@gmail.com>

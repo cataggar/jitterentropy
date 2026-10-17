@@ -1,6 +1,42 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
 pub const build_options = internal.build_options;
+pub const base = @import("base.zig");
+pub const status = @import("status.zig");
+
+comptime {
+    _ = base.jent_selftest_run;
+    _ = base.ensure_osr_is_at_least_minimal;
+    _ = base.jent_version;
+    _ = base.jent_read_entropy;
+    _ = base.jent_health_failure_reset;
+    _ = base.jent_read_entropy_safe;
+    _ = base.jent_memsize;
+    _ = base.jent_hashloop_cnt;
+    _ = base.jent_entropy_collector_alloc_internal;
+    _ = base.jent_entropy_collector_alloc;
+    _ = base.jent_raw_selftest;
+    _ = base.jent_entropy_collector_alloc_raw;
+    _ = base.jent_entropy_collector_free;
+    _ = base.jent_time_entropy_init;
+    _ = base.jent_selftest;
+    _ = base.jent_entropy_init;
+    _ = base.jent_entropy_init_ex;
+    _ = base.jent_entropy_switch_notime_impl;
+    _ = base.jent_entropy_set_notime_cpu;
+    _ = base.jent_set_fips_failure_callback;
+
+    _ = status.jent_status;
+    _ = status.jent_entropy_collector_uuid;
+    _ = status.jent_entropy_collector_osr;
+    _ = status.jent_entropy_collector_flags;
+    _ = status.jent_entropy_collector_memsize;
+    _ = status.jent_entropy_collector_health_failure;
+    _ = status.jent_entropy_collector_reinitializations;
+    _ = status.jent_entropy_collector_read_invocations;
+    _ = status.jent_entropy_collector_bytes_output;
+    _ = status.jent_entropy_collector_hashloops;
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +184,6 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(base);
+    std.testing.refAllDecls(status);
 }

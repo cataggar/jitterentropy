@@ -47,8 +47,8 @@
 /*
  * Deliberately avoid <linux/module.h> here: it transitively pulls in almost the
  * entire kernel header tree (sched.h, slab.h, rwsem.h, ...), and this header is
- * included by the entropy-collection core which must be compiled with -O0 (see
- * the __OPTIMIZE__ guard in src/jitterentropy-base.c). Several of those headers
+ * included by the entropy-collection core which must be compiled with -O0 (the
+ * src/base.zig root module enforces Debug mode). Several of those headers
  * (e.g. the asm_inline in <linux/rwsem.h>) do not compile at -O0 on modern
  * kernels. Only the lightweight, -O0-safe headers providing the types and
  * helpers used by the core are pulled in. The kernel interface glue
