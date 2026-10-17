@@ -616,10 +616,11 @@ void jent_random_data_one(
  *
  * @param[in] ec Reference to entropy collector
  */
-#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32) && !defined(__CYGWIN__)
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32) && \
+	!defined(__CYGWIN__) && !defined(JENT_PRIVATE_COMPILE)
 __attribute__((weak))
 #endif
-void jent_random_data(struct rand_data *ec)
+JENT_PRIVATE_STATIC void jent_random_data(struct rand_data *ec)
 {
 	/*
 	 * Select which noise source to use for the entropy collection

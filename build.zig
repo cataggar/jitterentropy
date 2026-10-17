@@ -245,6 +245,9 @@ pub fn build(b: *std.Build) void {
     mock_build_options.addOption(bool, "stack_protector", stack_protector);
     mock_build_options.addOption(std.builtin.LinkMode, "linkage", .static);
 
+    const record_options = b.addOptions();
+    record_options.addOption(bool, "raw_memory_access", raw_memory_access);
+
     const os_tag = target.result.os.tag;
     const c_flags = getCFlags(b, target, opts, &.{}) catch @panic("OOM");
 
@@ -333,37 +336,19 @@ pub fn build(b: *std.Build) void {
         addCheckExportsTest(b, test_step, lib, "version.lds");
     }
 
+    var recording_lib: ?*std.Build.Step.Compile = null;
     if (enable_recording) {
-        const rec_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
-        rec_mod.root_source_file = b.path("src/root.zig");
-        rec_mod.addOptions("build_options", build_options);
-        configureIncludePaths(b, rec_mod);
-        rec_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
-        configureCommonDefines(b, rec_mod, target, opts, linkage, false);
-        rec_mod.addCMacro("JENT_RAW_COLLECTOR", "1");
-        if (os_tag == .windows) {
-            if (linkage == .dynamic) {
-                rec_mod.addCMacro("JENT_RECORD_BUILDING_DLL", "1");
-            } else {
-                rec_mod.addCMacro("JENT_RECORD_STATIC_LIB", "1");
-            }
-        }
-        configureSystemLibraries(rec_mod, target, opts);
-        rec_mod.addCSourceFiles(.{
-            .files = lib_c_sources,
-            .flags = c_flags,
-        });
-        rec_mod.addCSourceFile(.{
-            .file = b.path("tests/raw-entropy/recording_library/jitterentropy-record-lib.c"),
-            .flags = c_flags,
-        });
-
-        const rec_lib = b.addLibrary(.{
-            .name = "jitterentropy-record",
-            .linkage = linkage,
-            .version = jitterentropy_version,
-            .root_module = rec_mod,
-        });
+        const rec_lib = addRecordingLibrary(
+            b,
+            target,
+            optimize,
+            opts,
+            record_options,
+            c_flags,
+            linkage,
+            raw_memory_access,
+        );
+        recording_lib = rec_lib;
         if (linkage == .dynamic) {
             if (os_tag.isDarwin()) {
                 rec_lib.install_name = b.fmt(
@@ -389,16 +374,8 @@ pub fn build(b: *std.Build) void {
         }
 
         const colink_mod = createCModule(b, target, optimize, opts, null);
-        configureIncludePaths(b, colink_mod);
-        colink_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
-        configureCommonDefines(b, colink_mod, target, opts, linkage, false);
-        if (os_tag == .windows and linkage == .static) {
-            colink_mod.addCMacro("JENT_RECORD_STATIC_LIB", "1");
-        }
-        colink_mod.addCSourceFile(.{
-            .file = b.path("tests/raw-entropy/recording_library/record-colink.c"),
-            .flags = c_flags,
-        });
+        colink_mod.root_source_file =
+            b.path("tests/raw-entropy/recording_library/record_colink.zig");
         colink_mod.linkLibrary(lib);
         colink_mod.linkLibrary(rec_lib);
         const colink_exe = b.addExecutable(.{
@@ -580,27 +557,42 @@ pub fn build(b: *std.Build) void {
         configureInstallRPath(osr_exe.root_module, os_tag, linkage);
         b.installArtifact(osr_exe);
 
-        const hashtime_exe = addAbsorbingExecutable(
+        const hashtime_record_linkage: std.builtin.LinkMode =
+            if (recording_lib != null) linkage else .static;
+        const hashtime_record_lib = recording_lib orelse addRecordingLibrary(
             b,
-            "jitterentropy-hashtime",
             target,
             optimize,
             opts,
-            zig_core_lib,
+            record_options,
             c_flags,
-            &.{"tests/raw-entropy/recording_userspace/jitterentropy-hashtime.c"},
-            true,
-            os_tag != .windows,
+            .static,
+            raw_memory_access,
         );
-        hashtime_exe.root_module.addIncludePath(b.path("tests/raw-entropy/recording_library"));
-        hashtime_exe.root_module.addCMacro("JENT_RAW_COLLECTOR", "1");
-        hashtime_exe.root_module.addCSourceFiles(.{
-            .files = lib_c_sources,
+        const hashtime_mod = createCModule(b, target, optimize, opts, null);
+        configureIncludePaths(b, hashtime_mod);
+        hashtime_mod.addIncludePath(b.path("tests"));
+        hashtime_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
+        configureCommonDefines(b, hashtime_mod, target, opts, linkage, false);
+        configureCryptoLibraries(hashtime_mod, opts);
+        hashtime_mod.linkLibrary(hashtime_record_lib);
+        if (hashtime_record_linkage == .static) {
+            hashtime_mod.addCMacro("JENT_RECORD_STATIC_LIB", "1");
+        }
+        if (os_tag == .linux or os_tag == .freebsd or os_tag == .netbsd or
+            os_tag == .windows)
+        {
+            hashtime_mod.addCMacro("JENT_HAVE_CPU_PINNING", "1");
+        }
+        hashtime_mod.addCSourceFile(.{
+            .file = b.path("tests/raw-entropy/recording_userspace/jitterentropy-hashtime.c"),
             .flags = c_flags,
         });
-        if (raw_memory_access) {
-            hashtime_exe.root_module.addCMacro("JENT_TEST_MEASURE_RAW_MEMORY_ACCESS", "1");
-        }
+        const hashtime_exe = b.addExecutable(.{
+            .name = "jitterentropy-hashtime",
+            .root_module = hashtime_mod,
+        });
+        configureInstallRPath(hashtime_exe.root_module, os_tag, linkage);
         b.installArtifact(hashtime_exe);
 
         const tool_manpages: []const []const u8 = &.{
@@ -632,18 +624,12 @@ pub fn build(b: *std.Build) void {
         }
         b.installArtifact(cpuinfo_exe);
 
-        const extractlsb_exe = addToolExecutable(
-            b,
-            "extractlsb",
-            "tests/raw-entropy/extractlsb.c",
-            target,
-            optimize,
-            opts,
-            linkage,
-            c_flags,
-            null,
-            false,
-        );
+        const extractlsb_mod = createCModule(b, target, optimize, opts, null);
+        extractlsb_mod.root_source_file = b.path("tests/raw-entropy/extractlsb.zig");
+        const extractlsb_exe = b.addExecutable(.{
+            .name = "extractlsb",
+            .root_module = extractlsb_mod,
+        });
         b.installArtifact(extractlsb_exe);
 
         if (os_tag == .linux) {
@@ -1405,6 +1391,45 @@ fn configureSystemLibraries(
         mod.linkSystemLibrary("pthread", .{});
     }
     configureCryptoLibraries(mod, opts);
+}
+
+fn addRecordingLibrary(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    opts: BuildOptions,
+    record_options: *std.Build.Step.Options,
+    c_flags: []const []const u8,
+    linkage: std.builtin.LinkMode,
+    raw_memory_access: bool,
+) *std.Build.Step.Compile {
+    const mod = createCModule(
+        b,
+        target,
+        optimize,
+        opts,
+        if (target.result.os.tag == .windows) null else true,
+    );
+    mod.root_source_file =
+        b.path("tests/raw-entropy/recording_library/record_lib.zig");
+    mod.addOptions("record_options", record_options);
+    configureIncludePaths(b, mod);
+    mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
+    configureCommonDefines(b, mod, target, opts, linkage, false);
+    if (raw_memory_access) {
+        mod.addCMacro("JENT_TEST_MEASURE_RAW_MEMORY_ACCESS", "1");
+    }
+    configureSystemLibraries(mod, target, opts);
+    mod.addCSourceFile(.{
+        .file = b.path("tests/raw-entropy/recording_library/record_core.c"),
+        .flags = c_flags,
+    });
+    return b.addLibrary(.{
+        .name = "jitterentropy-record",
+        .linkage = linkage,
+        .version = jitterentropy_version,
+        .root_module = mod,
+    });
 }
 
 fn addAbsorbingExecutable(

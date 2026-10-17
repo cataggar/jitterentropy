@@ -35,8 +35,11 @@ extern "C"
 #define JENT_GCD_SELFTEST_ELEM 10
 #define JENT_GCD_SELFTEST_EXP 3ULL
 
+#ifdef JENT_PRIVATE_COMPILE
 JENT_INTERNAL
+#else
 extern uint32_t jent_common_timer_gcd[JENT_GCD_CLOCKS];
+#endif
 
 JENT_INTERNAL
 uint64_t jent_gcd64(uint64_t a, uint64_t b);

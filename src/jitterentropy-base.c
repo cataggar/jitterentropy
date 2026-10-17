@@ -745,7 +745,7 @@ unsigned int jent_hashloop_cnt(unsigned int flags)
  * set earlier, an allocation racing a first initialization skipped its own
  * and found no GCD yet.
  */
-int jent_selftest_run = 0;
+JENT_INTERNAL int jent_selftest_run = 0;
 
 struct rand_data
 *jent_entropy_collector_alloc_internal(unsigned int osr, unsigned int flags)

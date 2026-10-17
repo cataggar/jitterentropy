@@ -27,8 +27,11 @@ extern "C"
 {
 #endif
 
+#ifdef JENT_PRIVATE_COMPILE
 JENT_INTERNAL
+#else
 extern int jent_selftest_run;
+#endif
 
 JENT_INTERNAL
 unsigned int ensure_osr_is_at_least_minimal(unsigned int current_osr);

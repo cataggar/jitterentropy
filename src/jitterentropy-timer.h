@@ -29,8 +29,11 @@ extern "C"
 
 #ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
 
+#ifdef JENT_PRIVATE_COMPILE
 JENT_INTERNAL
+#else
 extern struct jent_notime_thread jent_notime_thread_builtin;
+#endif
 #ifdef JENT_PTHREAD
 JENT_INTERNAL
 void *jent_notime_sample_timer(void *arg);

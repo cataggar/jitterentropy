@@ -16,27 +16,22 @@ run in. `jitterentropy-record.h` declares it:
   them up before calling it.
 - `jent_record_alloc()`, `jent_record_prime()`, `jent_record_sample()` and
   `jent_record_free()` hand the caller one delta at a time and write no file.
-  `jitterentropy-record-session.c` holds them and needs no libc, so the
-  kernel module compiles it for its debugfs test interface
-  (`linux_kernel/jitterentropy_testing.c`).
+  `record_lib.zig` implements them together with the file-based recording API.
 - `jent_record_health_names()` names the health tests of a failure mask as
   `jitterentropy-hashtime` lists them.
 
 None prints anything. The library carries a copy of `libjitterentropy` of
 its own and exports nothing but these functions, so it links beside
-`libjitterentropy`, shared or static; `record-colink.c` tests that. The build
-offers it only when asked to - `-DENABLE_RECORDING=ON` with CMake,
-`-Drecording=true` with `zig build` - shared or static as the library itself.
-`jitterentropy-record-lib.c` compiles the copy and the recording as one
-translation unit, a private copy (`JENT_PRIVATE_COMPILE`) in which every
-function of the library is static, so both the archive and the shared library
-define the recording and nothing else by construction, with any toolchain.
-On the ELF linkers `record.lds` limits the shared library's exports to the API
-of `jitterentropy-record.h` as well; CMake checks it against the header.
+`libjitterentropy`, shared or static; `record_colink.zig` tests that. The Zig
+build offers it only when asked to with `-Drecording=true`, shared or static
+as the library itself.
+`record_core.c` compiles the still-C core as one private translation unit and
+hands `record_lib.zig` a hidden function table. On ELF linkers `record.lds`
+limits the shared library's exports to the API of `jitterentropy-record.h`.
 
-`jitterentropy-hashtime` compiles the same recording code into itself rather
-than linking the library, so a recording made through the library and one made
-with the tool are taken the same way.
+`jitterentropy-hashtime` links the same recording implementation, so a
+recording made through the library and one made with the tool are taken the
+same way.
 
 ## What is recorded
 

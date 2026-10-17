@@ -17,70 +17,21 @@
  * DAMAGE.
  */
 
-#ifdef __linux__
-#define _GNU_SOURCE
-#endif
-
-/*
- * jent_entropy_collector_alloc_raw() of the absorbed jitterentropy-base.c,
- * for the recording of jitterentropy-record.c below.
- */
-#define JENT_RAW_COLLECTOR
-
 #include <errno.h>
-#include <inttypes.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
-#ifdef _MSC_VER
-#include <io.h>
-#define open  _open
-#define close _close
-#else
-#include <unistd.h>
-#endif
-
-#ifdef __linux__
-#include <sched.h>	/* sched_setaffinity() for --cpu */
-#endif
-
-#ifdef __APPLE__
-#include <pthread.h>
-#include <sys/qos.h>		/* QoS classes for --e-cores and --p-cores */
-#include <sys/resource.h>	/* PRIO_DARWIN_PROCESS for --p-cores */
-#endif
-
-/*
- * The atomic accessors of the process-wide state. Absorbed ahead of
- * everything else because it depends on nothing else and nearly everything
- * else depends on it - see arch/jitterentropy-arch-atomic.h.
- */
-#ifndef JENT_RAW_COLLECTOR
-#define JENT_RAW_COLLECTOR
-#endif
-#include "arch/jitterentropy-arch-compat.h"
-#include "jitterentropy-internal.h"
-#include "jitterentropy-base.h"
-#include "jitterentropy-gcd.h"
-#include "jitterentropy-health.h"
-#include "jitterentropy-noise.h"
-#include "jitterentropy-timer.h"
-#include "jitterentropy-sha3.h"
-#include "jitterentropy-uuid.h"
-
-/* The recording itself, shared with libjitterentropy-record. */
-#define JENT_RECORD_STATIC_LIB
-#include "../recording_library/jitterentropy-record.c"
+#include "../recording_library/jitterentropy-record.h"
 
 #include "jitterentropy-memlock.h"
 #include "jitterentropy-options.h"
 
 /*
- * --cpu where jent_record_run() can pin (JENT_HAVE_CPU_PINNING of
- * jitterentropy-record.c), --e-cores and --p-cores where it can select a core
+ * --cpu where jent_record_run() can pin (JENT_HAVE_CPU_PINNING from the
+ * build), --e-cores and --p-cores where it can select a core
  * type. Each is parsed everywhere, so that passing it yields the reason it is
  * not honored rather than "unknown option".
  */
@@ -142,13 +93,6 @@ int main(int argc, char * argv[])
 	};
 	unsigned long val;
 	int ret;
-
-	/*
-	 * Absorbed with the library sources, and used by it in one
-	 * configuration of JENT_RANDOM_MEMACCESS or the other only.
-	 */
-	(void)jent_memaccess_deterministic;
-	(void)jent_memaccess_pseudorandom;
 
 	if (argc < 4) {
 		printf("%s <rounds per repeat> <number of repeats> <filename> [" JENT_OPTIONS_USAGE "|" JENT_OPTIONS_USAGE_OSR "|--loopcnt <NUM>|--hashloop|--memaccess" JENT_USAGE_CPU JENT_USAGE_CORES "|--status]\n", argv[0]);

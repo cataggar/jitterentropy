@@ -32,7 +32,7 @@
  * 32 bits (see the bound in jent_gcd_verdict()) for atomic access, zero is not
  * established.
  */
-uint32_t jent_common_timer_gcd[JENT_GCD_CLOCKS] = { 0 };
+JENT_INTERNAL uint32_t jent_common_timer_gcd[JENT_GCD_CLOCKS] = { 0 };
 
 /* Takes enable_notime as it stands, so that no call site has to translate. */
 static inline unsigned int jent_gcd_clock(unsigned int notime)
