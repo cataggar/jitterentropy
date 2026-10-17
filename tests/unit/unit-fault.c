@@ -505,8 +505,10 @@ int jent_notime_thread_create(struct jent_notime_ctx *ctx,
 #endif /* JENT_CONF_ENABLE_INTERNAL_TIMER */
 
 int jent_fips_enabled(void);
-
-#include "jitterentropy-arch-cache.c"
+extern int jent_fi_cache_sysconf_mode;
+void jent_get_cachesize_sysconf(uint64_t *l1, uint64_t *l2, uint64_t *l3);
+void jent_get_cachesize_sysfs_dir(const char *cpudir, uint64_t *l1,
+				 uint64_t *l2, uint64_t *l3);
 /*
  * The rename is scoped to this one include: the sources above call
  * jent_fips_enabled() and must reach the override below, not the real one.
@@ -1029,12 +1031,13 @@ static void test_platform_query_failures(void)
 
 	JENT_UT_TRUE(jent_ncpu() > 0, "the real count comes back afterwards");
 
-#if defined(JENT_ARCH_CACHE_LINUX)
+#ifdef __linux__
 	/* The cache sizes. A libc that does not know leaves them at zero. */
 	{
 		uint64_t l1 = UINT64_MAX, l2 = UINT64_MAX, l3 = UINT64_MAX;
 
 		fi_sysconf_mode = FI_SYSCONF_FAIL;
+		jent_fi_cache_sysconf_mode = FI_SYSCONF_FAIL;
 		jent_get_cachesize_sysconf(&l1, &l2, &l3);
 		JENT_UT_EQ(l1, 0, "an unanswerable L1 size is zero");
 		JENT_UT_EQ(l2, 0, "an unanswerable L2 size is zero");
@@ -1046,18 +1049,21 @@ static void test_platform_query_failures(void)
 		 * away.
 		 */
 		fi_sysconf_mode = FI_SYSCONF_ZERO;
+		jent_fi_cache_sysconf_mode = FI_SYSCONF_ZERO;
 		l1 = UINT64_MAX;
 		jent_get_cachesize_sysfs_dir("/nonexistent/jent/cpu",
 					     &l1, &l2, &l3);
 		JENT_UT_EQ(l1, 0, "a CPU count of zero is handled");
 
 		fi_sysconf_mode = FI_SYSCONF_HUGE;
+		jent_fi_cache_sysconf_mode = FI_SYSCONF_HUGE;
 		l1 = UINT64_MAX;
 		jent_get_cachesize_sysfs_dir("/nonexistent/jent/cpu",
 					     &l1, &l2, &l3);
 		JENT_UT_EQ(l1, 0, "an implausible CPU count is capped");
 
 		fi_sysconf_mode = FI_SYSCONF_REAL;
+		jent_fi_cache_sysconf_mode = FI_SYSCONF_REAL;
 	}
 #endif
 

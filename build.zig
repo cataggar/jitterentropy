@@ -16,7 +16,6 @@ const lib_c_sources: []const []const u8 = &.{
     "src/jitterentropy-timer.c",
     "src/jitterentropy-uuid.c",
     "arch/jitterentropy-arch-atomic.c",
-    "arch/jitterentropy-arch-cache.c",
     "arch/jitterentropy-arch-fips.c",
     "arch/jitterentropy-arch-memory.c",
     "arch/jitterentropy-arch-ncpu.c",
@@ -29,7 +28,6 @@ const lib_c_sources: []const []const u8 = &.{
 const unit_test_names: []const []const u8 = &.{
     "unit-sha3",
     "unit-gcd",
-    "unit-arch-cache",
     "unit-arch-fips",
     "unit-arch-memory",
     "unit-arch-ncpu",
@@ -1042,6 +1040,28 @@ pub fn build(b: *std.Build) void {
     const run_zig_harness_tests = b.addRunArtifact(zig_harness_tests);
     test_step.dependOn(&run_zig_harness_tests.step);
 
+    const cache_unit_impl_mod = b.createModule(.{
+        .root_source_file = b.path("src/arch/cache.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    const cache_unit_mod = b.createModule(.{
+        .root_source_file = b.path("tests/unit/unit_arch_cache.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    cache_unit_mod.addImport("cache", cache_unit_impl_mod);
+    cache_unit_mod.addImport("test_harness", zig_harness_mod);
+    configureSystemLibraries(cache_unit_mod, target, opts);
+    const cache_unit_exe = b.addExecutable(.{
+        .name = "unit-arch-cache",
+        .root_module = cache_unit_mod,
+    });
+    const run_cache_unit = addSkipAwareTestRun(b, test_runner_exe, cache_unit_exe, tsan_options);
+    test_step.dependOn(&run_cache_unit.step);
+
     for (unit_test_names) |ut_name| {
         const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, zig_core_lib, c_flags, false);
         const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
@@ -1401,6 +1421,7 @@ fn configureSystemLibraries(
     const os_tag = target.result.os.tag;
     if (os_tag == .windows) {
         mod.linkSystemLibrary("bcrypt", .{});
+        mod.linkSystemLibrary("kernel32", .{});
     } else if (opts.internal_timer and !target.result.abi.isAndroid() and os_tag != .freebsd) {
         mod.linkSystemLibrary("pthread", .{});
     }
@@ -1475,9 +1496,6 @@ fn addToolExecutable(
 }
 
 fn excludedSourcesForUnitTest(name: []const u8) []const []const u8 {
-    if (std.mem.eql(u8, name, "unit-arch-cache")) {
-        return &.{"arch/jitterentropy-arch-cache.c"};
-    }
     if (std.mem.eql(u8, name, "unit-arch-ncpu")) {
         return &.{"arch/jitterentropy-arch-ncpu.c"};
     }
@@ -1490,7 +1508,6 @@ fn excludedSourcesForUnitTest(name: []const u8) []const []const u8 {
             "arch/jitterentropy-arch-ncpu.c",
             "arch/jitterentropy-arch-thread.c",
             "arch/jitterentropy-arch-timer.c",
-            "arch/jitterentropy-arch-cache.c",
             "arch/jitterentropy-arch-fips.c",
             "arch/jitterentropy-arch-random.c",
         };
@@ -1811,6 +1828,22 @@ fn addEfiTargets(b: *std.Build) void {
         efi_flags_list.appendSlice(b.allocator, spec.extra_flags) catch @panic("OOM");
         const efi_flags = efi_flags_list.toOwnedSlice(b.allocator) catch @panic("OOM");
 
+        const efi_cache_mod = b.createModule(.{
+            .root_source_file = b.path("src/arch/cache.zig"),
+            .target = uefi_target,
+            .optimize = .Debug,
+            .link_libc = false,
+            .pic = true,
+            .red_zone = if (spec.arch == .x86_64) false else null,
+            .stack_check = false,
+            .stack_protector = false,
+        });
+        const efi_cache_lib = b.addLibrary(.{
+            .name = b.fmt("jent-cache-{s}", .{spec.boot_name}),
+            .linkage = .static,
+            .root_module = efi_cache_mod,
+        });
+
         const efi_mod = b.createModule(.{
             .target = uefi_target,
             .optimize = .Debug,
@@ -1820,6 +1853,7 @@ fn addEfiTargets(b: *std.Build) void {
             .stack_check = false,
             .stack_protector = false,
         });
+        efi_mod.linkLibrary(efi_cache_lib);
         efi_mod.addIncludePath(efi_inc_dir);
         configureIncludePaths(b, efi_mod);
         efi_mod.addCMacro("JENT_CONF_ENABLE_INTERNAL_TIMER", "1");

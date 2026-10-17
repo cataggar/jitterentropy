@@ -45,7 +45,7 @@
  * Provides jent_cache_size_roundup(int all_caches) returning a size that
  * is a power of two strictly greater than the queried data cache size,
  * or 0 when the platform offers no way to discover it. Defined in
- * arch/jitterentropy-arch-cache.c.
+ * src/arch/cache.zig.
  *
  * Every backend there implements the same hook - report the L1 data, L2 and L3
  * cache size, 0 for a level it cannot discover - and the common code does the
@@ -72,6 +72,6 @@
 #define _JITTERENTROPY_ARCH_CACHE_H
 
 JENT_INTERNAL
-uint64_t jent_cache_size_roundup(int all_caches);
+uint32_t jent_cache_size_roundup(int all_caches);
 
 #endif /* _JITTERENTROPY_ARCH_CACHE_H */

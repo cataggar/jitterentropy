@@ -658,7 +658,7 @@ pub extern fn jent_atomic_store_u32(ptr: *u32, val: u32) callconv(.c) void;
 pub extern fn jent_atomic_load_fips_cb(ptr: *const jent_fips_failure_cb) callconv(.c) jent_fips_failure_cb;
 pub extern fn jent_atomic_store_fips_cb(ptr: *jent_fips_failure_cb, val: jent_fips_failure_cb) callconv(.c) void;
 
-pub extern fn jent_cache_size_roundup(all_caches: c_int) callconv(.c) u64;
+pub extern fn jent_cache_size_roundup(all_caches: c_int) callconv(.c) u32;
 pub extern fn jent_fips_enabled() callconv(.c) c_int;
 
 pub extern fn jent_memset_secure(s: ?*anyopaque, n: usize) callconv(.c) void;

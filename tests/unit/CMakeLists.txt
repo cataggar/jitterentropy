@@ -40,7 +40,6 @@ jent_unit_test(unit-gcd)
 # One program per arch/ backend rather than one for all of them: each is a
 # ctest case of its own, so a failure names the backend in the JUnit report
 # instead of arriving as one blob.
-jent_unit_test(unit-arch-cache)
 jent_unit_test(unit-arch-fips)
 jent_unit_test(unit-arch-memory)
 jent_unit_test(unit-arch-ncpu)

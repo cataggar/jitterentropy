@@ -509,7 +509,7 @@ static void jent_caches_x86(struct jent_cpu_info *info)
 	 * Leaf 4 is Intel's; AMD and Hygon leave it empty (cache type 0) and
 	 * carry the identical structure in the extended leaf. Both are probed
 	 * rather than dispatching on the vendor ID, as the library itself does
-	 * in arch/jitterentropy-arch-cache.c.
+	 * in src/arch/cache.zig.
 	 */
 	if (jent_caches_x86_leaf(info, 0x00000004))
 		return;

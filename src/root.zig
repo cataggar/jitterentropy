@@ -1,6 +1,36 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
+pub const cache = @import("arch/cache.zig");
 pub const build_options = internal.build_options;
+
+comptime {
+    _ = cache.jent_cache_size_roundup;
+    _ = cache.jent_cache_roundup_from_sizes;
+    _ = cache.jent_cache_size_bits;
+    _ = cache.jent_cache_sizes_merge;
+    _ = cache.jent_cache_reset;
+    _ = cache.jent_get_cachesize_uncached;
+    _ = cache.jent_get_cachesize_sysconf;
+    _ = cache.jent_get_cachesize_sysfs;
+    _ = cache.jent_get_cachesize_sysfs_dir;
+    _ = cache.jent_parse_cache_level;
+    _ = cache.jent_parse_cache_size;
+    _ = cache.jent_parse_shared_cpu_map;
+    _ = cache.jent_cache_type_is_data;
+    _ = cache.jent_read_sysfs_attr;
+    _ = cache.jent_get_cachesize_cpuinfo;
+    _ = cache.jent_get_cachesize_cpuinfo_file;
+    _ = cache.jent_cpuinfo_arm_line;
+    _ = cache.jent_cache_sizes_arm64;
+    _ = cache.jent_cpuid_count;
+    _ = cache.jent_cache_sizes_cpuid_leaf;
+    _ = cache.jent_cache_sizes_cpuid;
+    _ = cache.jent_get_cachesize_cpuid;
+    _ = &cache.jent_fi_cache_sysconf_mode;
+    _ = &cache.sysfs_cpu_base;
+    _ = &cache.proc_cpuinfo_path;
+    _ = &cache.jent_cache_cpuid_callback;
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +178,5 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(cache);
 }
