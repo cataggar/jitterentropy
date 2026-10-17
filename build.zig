@@ -253,16 +253,11 @@ pub fn build(b: *std.Build) void {
             std.debug.panic("-Dkernel-lib=true requires a Linux target", .{});
         }
         const kern_mod = b.createModule(.{
+            .root_source_file = b.path("linux_kernel/userspace/jitterentropy-kernel.zig"),
             .target = target,
             .optimize = optimize,
             .link_libc = true,
             .pic = true,
-        });
-        kern_mod.addIncludePath(b.path("linux_kernel/userspace"));
-        kern_mod.addIncludePath(b.path("linux_kernel"));
-        kern_mod.addCSourceFile(.{
-            .file = b.path("linux_kernel/userspace/jitterentropy-kernel.c"),
-            .flags = c_flags,
         });
 
         const kern_lib = b.addLibrary(.{
@@ -285,15 +280,10 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(kern_lib);
 
         const jitter_rng_mod = b.createModule(.{
+            .root_source_file = b.path("linux_kernel/userspace/jitter_rng.zig"),
             .target = target,
             .optimize = optimize,
             .link_libc = true,
-        });
-        jitter_rng_mod.addIncludePath(b.path("linux_kernel/userspace"));
-        jitter_rng_mod.addIncludePath(b.path("linux_kernel"));
-        jitter_rng_mod.addCSourceFile(.{
-            .file = b.path("linux_kernel/userspace/jitter_rng.c"),
-            .flags = c_flags,
         });
         jitter_rng_mod.linkLibrary(kern_lib);
 
@@ -483,16 +473,10 @@ pub fn build(b: *std.Build) void {
 
         if (os_tag == .linux) {
             const getraw_mod = b.createModule(.{
+                .root_source_file = b.path("tests/raw-entropy/recording_runtime_kernelspace/getrawentropy.zig"),
                 .target = target,
                 .optimize = optimize,
                 .link_libc = true,
-            });
-            getraw_mod.addIncludePath(b.path("."));
-            getraw_mod.addIncludePath(b.path("linux_kernel"));
-            getraw_mod.addCMacro("RAW_DATATYPE_U64", "1");
-            getraw_mod.addCSourceFile(.{
-                .file = b.path("tests/raw-entropy/recording_runtime_kernelspace/getrawentropy.c"),
-                .flags = c_flags,
             });
             const getraw_exe = b.addExecutable(.{
                 .name = "getrawentropy",
@@ -501,14 +485,10 @@ pub fn build(b: *std.Build) void {
             b.installArtifact(getraw_exe);
 
             const status_mod = b.createModule(.{
+                .root_source_file = b.path("tests/chardev/jitterentropy-chardev-status.zig"),
                 .target = target,
                 .optimize = optimize,
                 .link_libc = true,
-            });
-            status_mod.addIncludePath(b.path("linux_kernel"));
-            status_mod.addCSourceFile(.{
-                .file = b.path("tests/chardev/jitterentropy-chardev-status.c"),
-                .flags = c_flags,
             });
             const status_exe = b.addExecutable(.{
                 .name = "jitterentropy-chardev-status",
@@ -517,15 +497,10 @@ pub fn build(b: *std.Build) void {
             b.installArtifact(status_exe);
 
             const fields_mod = b.createModule(.{
+                .root_source_file = b.path("tests/chardev/jitterentropy-chardev-fields.zig"),
                 .target = target,
                 .optimize = optimize,
                 .link_libc = true,
-            });
-            fields_mod.addIncludePath(b.path("."));
-            fields_mod.addIncludePath(b.path("linux_kernel"));
-            fields_mod.addCSourceFile(.{
-                .file = b.path("tests/chardev/jitterentropy-chardev-fields.c"),
-                .flags = c_flags,
             });
             const fields_exe = b.addExecutable(.{
                 .name = "jitterentropy-chardev-fields",
@@ -613,7 +588,23 @@ pub fn build(b: *std.Build) void {
     }
 
     if (os_tag == .linux) {
-        const ut_kern = addUnitTestExecutable(b, "unit-kernel-lib", target, optimize, opts, c_flags, false);
+        const ut_kern_lib_mod = b.createModule(.{
+            .root_source_file = b.path("linux_kernel/userspace/jitterentropy-kernel.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        const ut_kern_mod = b.createModule(.{
+            .root_source_file = b.path("tests/unit/unit-kernel-lib.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        });
+        ut_kern_mod.addImport("jitterentropy_kernel", ut_kern_lib_mod);
+        const ut_kern = b.addExecutable(.{
+            .name = "unit-kernel-lib",
+            .root_module = ut_kern_mod,
+        });
         const run_ut_kern = b.addRunArtifact(ut_kern);
         run_ut_kern.expectExitCode(0);
         test_step.dependOn(&run_ut_kern.step);
