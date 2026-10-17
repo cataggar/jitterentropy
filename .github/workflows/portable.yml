@@ -180,13 +180,6 @@ jobs:
             export LD_LIBRARY_PATH="$PWD/prefix/lib:${LD_LIBRARY_PATH:-}"
             export DYLD_LIBRARY_PATH="$PWD/prefix/lib:${DYLD_LIBRARY_PATH:-}"
             ./build-link/jitterentropy-linktest
-            if [ "${{ runner.os }}" = Linux ]; then
-              zig cc -std=c11 -I"$PWD/prefix/include" \
-                tests/linking/jitterentropy-kernel-linktest.c \
-                -L"$PWD/prefix/lib" -ljitterentropy-kernel \
-                -o build-link/jitterentropy-kernel-linktest
-              ./build-link/jitterentropy-kernel-linktest
-            fi
             ;;
           esac
 

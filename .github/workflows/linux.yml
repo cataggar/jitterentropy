@@ -256,6 +256,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.17.0
+          use-cache: false
 
       - name: Build and test in a ${{ matrix.name }} container
         run: |

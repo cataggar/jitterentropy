@@ -19,7 +19,11 @@ for linkage in static dynamic; do
 	echo "==> Zig build (-Dlinkage=$linkage)"
 
 	rm -rf "$build"
-	zig build -Dlinkage="$linkage" --prefix "$PWD/$build" "$@"
+	prefix="$PWD/$build"
+	if command -v cygpath > /dev/null 2>&1; then
+		prefix=$(cygpath -m "$prefix")
+	fi
+	zig build -Dlinkage="$linkage" --prefix "$prefix" "$@"
 
 	# Not on the guests' default search path.
 	LD_LIBRARY_PATH="$PWD/$build/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

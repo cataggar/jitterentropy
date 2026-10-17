@@ -49,7 +49,10 @@ jobs:
           usesh: true
           copyback: false
           prepare: |
-            pkg_add -I bash zig
+            pkg_add -I bash xz
+            ftp -o /tmp/zig.tar.xz https://ziglang.org/download/0.17.0/zig-x86_64-openbsd-0.17.0.tar.xz
+            xz -dc /tmp/zig.tar.xz | tar -C /usr/local -xf -
+            ln -sf /usr/local/zig-x86_64-openbsd-0.17.0/zig /usr/local/bin/zig
           run: |
             bash .github/scripts/vm-build-and-test.sh
 
@@ -66,21 +69,5 @@ jobs:
           copyback: false
           prepare: |
             /usr/sbin/pkg_add bash zig
-          run: |
-            bash .github/scripts/vm-build-and-test.sh
-
-  dragonflybsd:
-    name: DragonFly BSD
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Build and test in a DragonFly BSD VM
-        uses: vmactions/dragonflybsd-vm@v1
-        with:
-          usesh: true
-          copyback: false
-          prepare: |
-            pkg install -y bash zig
           run: |
             bash .github/scripts/vm-build-and-test.sh

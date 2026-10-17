@@ -616,7 +616,7 @@ pub fn build(b: *std.Build) void {
             false,
         );
         if (os_tag == .windows) {
-            cpuinfo_exe.root_module.linkSystemLibrary("advapi32", .{});
+            cpuinfo_exe.root_module.linkSystemLibrary("advapi32", .{ .use_pkg_config = .no });
         }
         b.installArtifact(cpuinfo_exe);
 
@@ -717,13 +717,13 @@ pub fn build(b: *std.Build) void {
     const run_flags_encode = b.addRunArtifact(flags_exe);
     applyTestEnv(run_flags_encode, tsan_options);
     run_flags_encode.addArgs(&.{ "ntg1", "JENT_MAX_MEMSIZE_1MB", "--hloopcnt", "4" });
-    run_flags_encode.expectStdOutEqual("1518338112\n");
+    run_flags_encode.expectStdOutEqual(if (os_tag == .windows) "1518338112\r\n" else "1518338112\n");
     test_step.dependOn(&run_flags_encode.step);
 
     const run_flags_mixed = b.addRunArtifact(flags_exe);
     applyTestEnv(run_flags_mixed, tsan_options);
     run_flags_mixed.addArg("JeNt_NtG1");
-    run_flags_mixed.expectStdOutEqual("64\n");
+    run_flags_mixed.expectStdOutEqual(if (os_tag == .windows) "64\r\n" else "64\n");
     test_step.dependOn(&run_flags_mixed.step);
 
     const FlagsFailCase = struct {
@@ -733,15 +733,15 @@ pub fn build(b: *std.Build) void {
     const flags_fail_cases: []const FlagsFailCase = &.{
         .{
             .args = &.{ "--decode", "0x200" },
-            .stderr = "refused: reserved bits 0x00000200 set\n",
+            .stderr = if (os_tag == .windows) "refused: reserved bits 0x00000200 set\r\n" else "refused: reserved bits 0x00000200 set\n",
         },
         .{
             .args = &.{ "--ntg1", "--force-internal-timer" },
-            .stderr = "refused: JENT_FORCE_INTERNAL_TIMER with JENT_NTG1\n",
+            .stderr = if (os_tag == .windows) "refused: JENT_FORCE_INTERNAL_TIMER with JENT_NTG1\r\n" else "refused: JENT_FORCE_INTERNAL_TIMER with JENT_NTG1\n",
         },
         .{
             .args = &.{ "JENT_HASHLOOP_1", "JENT_HASHLOOP_2" },
-            .stderr = "JENT_HASHLOOP_2: field already set\n",
+            .stderr = if (os_tag == .windows) "JENT_HASHLOOP_2: field already set\r\n" else "JENT_HASHLOOP_2: field already set\n",
         },
     };
     for (flags_fail_cases) |case| {
@@ -995,6 +995,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .sanitize_c = if (opts.sanitizers) .full else .off,
+        .sanitize_thread = opts.tsan,
     });
     zig_test_mod.addOptions("build_options", build_options);
     configureIncludePaths(b, zig_test_mod);
@@ -1008,6 +1010,12 @@ pub fn build(b: *std.Build) void {
         .file = abi_test_helper_c,
         .flags = c_flags,
     });
+    if (opts.coverage_rt_file) |cov_rt| {
+        zig_test_mod.addCSourceFile(.{
+            .file = cov_rt,
+            .flags = &.{ "-std=gnu11", "-O2", "-fvisibility=hidden" },
+        });
+    }
 
     const zig_unit_tests = b.addTest(.{
         .name = "zig-unit-tests",
@@ -1430,9 +1438,9 @@ fn configureSystemLibraries(
 ) void {
     const os_tag = target.result.os.tag;
     if (os_tag == .windows) {
-        mod.linkSystemLibrary("bcrypt", .{});
+        mod.linkSystemLibrary("bcrypt", .{ .use_pkg_config = .no });
     } else if (opts.internal_timer and !target.result.abi.isAndroid() and os_tag != .freebsd) {
-        mod.linkSystemLibrary("pthread", .{});
+        mod.linkSystemLibrary("pthread", .{ .use_pkg_config = .no });
     }
     configureCryptoLibraries(mod, opts);
 }
@@ -1457,7 +1465,7 @@ fn addAbsorbingExecutable(
         configureSystemLibraries(mod, target, opts);
     }
     if (needs_libm) {
-        mod.linkSystemLibrary("m", .{});
+        mod.linkSystemLibrary("m", .{ .use_pkg_config = .no });
     }
     mod.addCSourceFiles(.{
         .files = files,
@@ -1490,7 +1498,7 @@ fn addToolExecutable(
         configureCryptoLibraries(mod, opts);
     }
     if (needs_libm) {
-        mod.linkSystemLibrary("m", .{});
+        mod.linkSystemLibrary("m", .{ .use_pkg_config = .no });
     }
     mod.addCSourceFile(.{
         .file = b.path(src_path),
