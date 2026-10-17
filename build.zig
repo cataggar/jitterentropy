@@ -236,10 +236,19 @@ pub fn build(b: *std.Build) void {
         addEfiTargets(b);
     }
 
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "internal_timer", internal_timer);
+    build_options.addOption(bool, "mock_timer", mock_timer);
+    build_options.addOption(bool, "raw_memory_access", raw_memory_access);
+    build_options.addOption(bool, "stack_protector", stack_protector);
+    build_options.addOption(std.builtin.LinkMode, "linkage", linkage);
+
     const os_tag = target.result.os.tag;
     const c_flags = getCFlags(b, target, opts, &.{}) catch @panic("OOM");
 
     const lib_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
+    lib_mod.root_source_file = b.path("src/root.zig");
+    lib_mod.addOptions("build_options", build_options);
     configureIncludePaths(b, lib_mod);
     configureCommonDefines(b, lib_mod, target, opts, linkage, true);
     configureSystemLibraries(lib_mod, target, opts);
@@ -253,6 +262,7 @@ pub fn build(b: *std.Build) void {
         .linkage = linkage,
         .version = jitterentropy_version,
         .root_module = lib_mod,
+        .use_llvm = true,
     });
     if (linkage == .dynamic) {
         if (os_tag.isDarwin()) {
@@ -321,6 +331,7 @@ pub fn build(b: *std.Build) void {
             .linkage = linkage,
             .version = jitterentropy_version,
             .root_module = rec_mod,
+            .use_llvm = true,
         });
         if (linkage == .dynamic) {
             if (os_tag.isDarwin()) {
@@ -385,6 +396,7 @@ pub fn build(b: *std.Build) void {
             .linkage = linkage,
             .version = jitterentropy_version,
             .root_module = kern_mod,
+            .use_llvm = true,
         });
         if (linkage == .dynamic) {
             kern_lib.setVersionScript(b.path("linux_kernel/userspace/kernel.lds"));
@@ -714,6 +726,270 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_flags_fail.step);
     }
 
+    const abi_test_wf = b.addWriteFiles();
+    const abi_test_helper_c = abi_test_wf.add("jent_abi_test_helper.c",
+        \\#include <stddef.h>
+        \\#include "jitterentropy-internal.h"
+        \\
+        \\size_t jent_test_sizeof_sha_ctx(void) { return sizeof(struct jent_sha_ctx); }
+        \\size_t jent_test_alignof_sha_ctx(void) { return _Alignof(struct jent_sha_ctx); }
+        \\size_t jent_test_offsetof_sha_ctx(int field_id) {
+        \\    switch (field_id) {
+        \\        case 0: return offsetof(struct jent_sha_ctx, state);
+        \\        case 1: return offsetof(struct jent_sha_ctx, msg_len);
+        \\        case 2: return offsetof(struct jent_sha_ctx, partial);
+        \\        case 3: return offsetof(struct jent_sha_ctx, xdrbg_block);
+        \\        case 4: return offsetof(struct jent_sha_ctx, r);
+        \\        case 5: return offsetof(struct jent_sha_ctx, rword);
+        \\        case 6: return offsetof(struct jent_sha_ctx, digestsize);
+        \\        case 7: return offsetof(struct jent_sha_ctx, padding);
+        \\        default: return (size_t)-1;
+        \\    }
+        \\}
+        \\
+        \\size_t jent_test_sizeof_rand_data(void) { return sizeof(struct rand_data); }
+        \\size_t jent_test_alignof_rand_data(void) { return _Alignof(struct rand_data); }
+        \\size_t jent_test_offsetof_rand_data(int field_id) {
+        \\    switch (field_id) {
+        \\        case 0: return offsetof(struct rand_data, hash_state);
+        \\        case 1: return offsetof(struct rand_data, prev_time);
+        \\        case 2: return offsetof(struct rand_data, flags);
+        \\        case 3: return offsetof(struct rand_data, osr);
+        \\        case 4: return offsetof(struct rand_data, uuid);
+        \\        case 5: return offsetof(struct rand_data, reinit_count);
+        \\        case 6: return offsetof(struct rand_data, read_invocations);
+        \\        case 7: return offsetof(struct rand_data, bytes_output);
+        \\        case 8: return offsetof(struct rand_data, startup_state);
+        \\        case 9: return offsetof(struct rand_data, mem);
+        \\        case 10: return offsetof(struct rand_data, memmask);
+        \\        case 11: return offsetof(struct rand_data, memlocation);
+        \\        case 12: return offsetof(struct rand_data, memaccessloops);
+        \\        case 13: return offsetof(struct rand_data, hashloopcnt);
+        \\        case 14: return offsetof(struct rand_data, rct_count);
+        \\        case 15: return offsetof(struct rand_data, rct_cutoff);
+        \\        case 16: return offsetof(struct rand_data, rct_cutoff_permanent);
+        \\        case 17: return offsetof(struct rand_data, apt_cutoff);
+        \\        case 18: return offsetof(struct rand_data, apt_cutoff_permanent);
+        \\        case 19: return offsetof(struct rand_data, apt_observations);
+        \\        case 20: return offsetof(struct rand_data, apt_count);
+        \\        case 21: return offsetof(struct rand_data, apt_base);
+        \\        case 22: return offsetof(struct rand_data, health_failure);
+        \\        case 23: return offsetof(struct rand_data, rct_mem_ctr);
+        \\        case 24: return offsetof(struct rand_data, rct_mem_nosr);
+        \\        case 25: return offsetof(struct rand_data, rct_mem_count);
+        \\        case 26: return offsetof(struct rand_data, rct_mem_cutoff);
+        \\        case 27: return offsetof(struct rand_data, rct_mem_cutoff_permanent);
+        \\        case 28: return offsetof(struct rand_data, selftest_failed);
+        \\#ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
+        \\        case 29: return offsetof(struct rand_data, notime_interrupt);
+        \\        case 30: return offsetof(struct rand_data, notime_timer);
+        \\        case 31: return offsetof(struct rand_data, notime_prev_timer);
+        \\        case 32: return offsetof(struct rand_data, notime_thread_ctx);
+        \\#endif
+        \\        case 33: return offsetof(struct rand_data, jent_common_timer_gcd);
+        \\        case 34: return offsetof(struct rand_data, lag_global_cutoff);
+        \\        case 35: return offsetof(struct rand_data, lag_global_cutoff_permanent);
+        \\        case 36: return offsetof(struct rand_data, lag_local_cutoff);
+        \\        case 37: return offsetof(struct rand_data, lag_local_cutoff_permanent);
+        \\        case 38: return offsetof(struct rand_data, lag_prediction_success_count);
+        \\        case 39: return offsetof(struct rand_data, lag_prediction_success_run);
+        \\        case 40: return offsetof(struct rand_data, lag_best_predictor);
+        \\        case 41: return offsetof(struct rand_data, lag_observations);
+        \\        case 42: return offsetof(struct rand_data, lag_delta_history);
+        \\        case 43: return offsetof(struct rand_data, lag_scoreboard);
+        \\        default: return (size_t)-1;
+        \\    }
+        \\}
+        \\
+        \\size_t jent_test_sizeof_notime_thread(void) { return sizeof(struct jent_notime_thread); }
+        \\size_t jent_test_alignof_notime_thread(void) { return _Alignof(struct jent_notime_thread); }
+        \\size_t jent_test_offsetof_notime_thread(int field_id) {
+        \\    switch (field_id) {
+        \\        case 0: return offsetof(struct jent_notime_thread, jent_notime_init);
+        \\        case 1: return offsetof(struct jent_notime_thread, jent_notime_fini);
+        \\        case 2: return offsetof(struct jent_notime_thread, jent_notime_start);
+        \\        case 3: return offsetof(struct jent_notime_thread, jent_notime_stop);
+        \\        default: return (size_t)-1;
+        \\    }
+        \\}
+        \\
+        \\size_t jent_test_sizeof_notime_ctx(void) {
+        \\#ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
+        \\    return sizeof(struct jent_notime_ctx);
+        \\#else
+        \\    return 0;
+        \\#endif
+        \\}
+        \\size_t jent_test_alignof_notime_ctx(void) {
+        \\#ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
+        \\    return _Alignof(struct jent_notime_ctx);
+        \\#else
+        \\    return 0;
+        \\#endif
+        \\}
+        \\
+        \\unsigned int jent_test_c_uint_const(int id) {
+        \\    switch (id) {
+        \\        case 0: return JENT_MAJVERSION;
+        \\        case 1: return JENT_MINVERSION;
+        \\        case 2: return JENT_PATCHLEVEL;
+        \\        case 3: return JENT_VERSION;
+        \\        case 4: return JENT_DISABLE_STIR;
+        \\        case 5: return JENT_DISABLE_UNBIAS;
+        \\        case 6: return JENT_DISABLE_MEMORY_ACCESS;
+        \\        case 7: return JENT_FORCE_INTERNAL_TIMER;
+        \\        case 8: return JENT_DISABLE_INTERNAL_TIMER;
+        \\        case 9: return JENT_FORCE_FIPS;
+        \\        case 10: return JENT_NTG1;
+        \\        case 11: return JENT_CACHE_ALL;
+        \\        case 12: return JENT_FORCE_SECURE_MEM;
+        \\        case 13: return JENT_INT_MEASURE_CLOCK;
+        \\        case 14: return JENT_MAX_MEMSIZE_1kB;
+        \\        case 15: return JENT_MAX_MEMSIZE_2kB;
+        \\        case 16: return JENT_MAX_MEMSIZE_4kB;
+        \\        case 17: return JENT_MAX_MEMSIZE_8kB;
+        \\        case 18: return JENT_MAX_MEMSIZE_16kB;
+        \\        case 19: return JENT_MAX_MEMSIZE_32kB;
+        \\        case 20: return JENT_MAX_MEMSIZE_64kB;
+        \\        case 21: return JENT_MAX_MEMSIZE_128kB;
+        \\        case 22: return JENT_MAX_MEMSIZE_256kB;
+        \\        case 23: return JENT_MAX_MEMSIZE_512kB;
+        \\        case 24: return JENT_MAX_MEMSIZE_1MB;
+        \\        case 25: return JENT_MAX_MEMSIZE_2MB;
+        \\        case 26: return JENT_MAX_MEMSIZE_4MB;
+        \\        case 27: return JENT_MAX_MEMSIZE_8MB;
+        \\        case 28: return JENT_MAX_MEMSIZE_16MB;
+        \\        case 29: return JENT_MAX_MEMSIZE_32MB;
+        \\        case 30: return JENT_MAX_MEMSIZE_64MB;
+        \\        case 31: return JENT_MAX_MEMSIZE_128MB;
+        \\        case 32: return JENT_MAX_MEMSIZE_256MB;
+        \\        case 33: return JENT_MAX_MEMSIZE_512MB;
+        \\        case 34: return JENT_MAX_MEMSIZE_MAX;
+        \\        case 35: return (unsigned int)JENT_MAX_MEMSIZE_MASK;
+        \\        case 36: return JENT_MAX_MEMSIZE_OFFSET;
+        \\        case 37: return JENT_MAX_HASHLOOP_MASK;
+        \\        case 38: return JENT_HASHLOOP_1;
+        \\        case 39: return JENT_HASHLOOP_2;
+        \\        case 40: return JENT_HASHLOOP_4;
+        \\        case 41: return JENT_HASHLOOP_8;
+        \\        case 42: return JENT_HASHLOOP_16;
+        \\        case 43: return JENT_HASHLOOP_32;
+        \\        case 44: return JENT_HASHLOOP_64;
+        \\        case 45: return JENT_HASHLOOP_128;
+        \\        case 46: return JENT_MAX_HASHLOOP;
+        \\        case 47: return JENT_RCT_FAILURE;
+        \\        case 48: return JENT_APT_FAILURE;
+        \\        case 49: return JENT_LAG_FAILURE;
+        \\        case 50: return JENT_RCT_MEM_FAILURE;
+        \\        case 51: return JENT_RCT_FAILURE_PERMANENT;
+        \\        case 52: return JENT_APT_FAILURE_PERMANENT;
+        \\        case 53: return JENT_LAG_FAILURE_PERMANENT;
+        \\        case 54: return JENT_RCT_MEM_FAILURE_PERMANENT;
+        \\        default: return 0xffffffffu;
+        \\    }
+        \\}
+        \\
+        \\int jent_test_c_int_const(int id) {
+        \\    switch (id) {
+        \\        case 0: return ENOTIME;
+        \\        case 1: return ECOARSETIME;
+        \\        case 2: return ENOMONOTONIC;
+        \\        case 3: return EMINVARIATION;
+        \\        case 4: return EVARVAR;
+        \\        case 5: return EMINVARVAR;
+        \\        case 6: return EPROGERR;
+        \\        case 7: return ESTUCK;
+        \\        case 8: return EHEALTH;
+        \\        case 9: return ERCT;
+        \\        case 10: return EHASH;
+        \\        case 11: return EMEM;
+        \\        case 12: return EGCD;
+        \\        case 13: return JENT_ERR_EINVAL;
+        \\        case 14: return JENT_ERR_RCT;
+        \\        case 15: return JENT_ERR_APT;
+        \\        case 16: return JENT_ERR_NOTIME;
+        \\        case 17: return JENT_ERR_LAG;
+        \\        case 18: return JENT_ERR_RCT_PERMANENT;
+        \\        case 19: return JENT_ERR_APT_PERMANENT;
+        \\        case 20: return JENT_ERR_LAG_PERMANENT;
+        \\        case 21: return JENT_ERR_RCT_MEM;
+        \\        case 22: return JENT_ERR_RCT_MEM_PERMANENT;
+        \\        case 23: return JENT_ERR_SELFTEST;
+        \\        default: return 0x7fffffff;
+        \\    }
+        \\}
+        \\
+        \\unsigned int jent_test_c_max_memsize_to_flags(unsigned int val) { return JENT_MAX_MEMSIZE_TO_FLAGS(val); }
+        \\unsigned int jent_test_c_flags_to_max_memsize(unsigned int flags) { return JENT_FLAGS_TO_MAX_MEMSIZE(flags); }
+        \\unsigned int jent_test_c_hashloop_to_flags(unsigned int val) { return JENT_HASHLOOP_TO_FLAGS(val); }
+        \\unsigned int jent_test_c_flags_to_hashloop(unsigned int flags) { return JENT_FLAGS_TO_HASHLOOP(flags); }
+        \\uint64_t jent_test_c_udiv64(uint64_t dividend, uint64_t divisor) { return jent_udiv64(dividend, divisor); }
+        \\uint64_t jent_test_c_umod64(uint64_t dividend, uint64_t divisor) { return jent_umod64(dividend, divisor); }
+        \\
+        \\void jent_test_c_set_sha_initially_seeded(struct jent_sha_ctx *ctx, uint8_t val) {
+        \\    ctx->initially_seeded = val ? 1 : 0;
+        \\}
+        \\uint8_t jent_test_c_get_sha_initially_seeded(const struct jent_sha_ctx *ctx) {
+        \\    return ctx->initially_seeded;
+        \\}
+        \\
+        \\void jent_test_c_set_rand_bitfield(struct rand_data *ec, int field_id, unsigned int val) {
+        \\    switch (field_id) {
+        \\        case 0: ec->apt_base_set = val ? 1 : 0; break;
+        \\        case 1: ec->is_fips_enabled = val ? 1 : 0; break;
+        \\        case 2: ec->enable_notime = val ? 1 : 0; break;
+        \\        case 3: ec->max_mem_set = val ? 1 : 0; break;
+        \\        case 4: ec->in_recovery = val ? 1 : 0; break;
+        \\        case 5: ec->stuck_prime = val & 3u; break;
+        \\#ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
+        \\        case 6: ec->notime_running = val ? 1 : 0; break;
+        \\#endif
+        \\        default: break;
+        \\    }
+        \\}
+        \\unsigned int jent_test_c_get_rand_bitfield(const struct rand_data *ec, int field_id) {
+        \\    switch (field_id) {
+        \\        case 0: return ec->apt_base_set;
+        \\        case 1: return ec->is_fips_enabled;
+        \\        case 2: return ec->enable_notime;
+        \\        case 3: return ec->max_mem_set;
+        \\        case 4: return ec->in_recovery;
+        \\        case 5: return ec->stuck_prime;
+        \\#ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
+        \\        case 6: return ec->notime_running;
+        \\#endif
+        \\        default: return 0;
+        \\    }
+        \\}
+    );
+
+    const zig_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    zig_test_mod.addOptions("build_options", build_options);
+    configureIncludePaths(b, zig_test_mod);
+    configureCommonDefines(b, zig_test_mod, target, opts, .static, false);
+    configureSystemLibraries(zig_test_mod, target, opts);
+    zig_test_mod.addCSourceFiles(.{
+        .files = lib_c_sources,
+        .flags = c_flags,
+    });
+    zig_test_mod.addCSourceFile(.{
+        .file = abi_test_helper_c,
+        .flags = c_flags,
+    });
+
+    const zig_unit_tests = b.addTest(.{
+        .name = "zig-unit-tests",
+        .root_module = zig_test_mod,
+    });
+    const run_zig_unit_tests = b.addRunArtifact(zig_unit_tests);
+    applyTestEnv(run_zig_unit_tests, tsan_options);
+    test_step.dependOn(&run_zig_unit_tests.step);
+
     for (unit_test_names) |ut_name| {
         const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, c_flags, false);
         const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
@@ -852,7 +1128,7 @@ fn createCModule(
         .optimize = optimize,
         .link_libc = true,
         .pic = pic,
-        .sanitize_c = if (opts.sanitizers) .full else null,
+        .sanitize_c = if (opts.sanitizers) .full else .off,
         .sanitize_thread = if (opts.tsan) true else null,
         .omit_frame_pointer = if (opts.sanitizers or opts.tsan or opts.coverage) false else null,
     });
