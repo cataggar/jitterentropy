@@ -25,14 +25,14 @@ run in. `jitterentropy-record.h` declares it:
 None prints anything. The library carries a copy of `libjitterentropy` of
 its own and exports nothing but these functions, so it links beside
 `libjitterentropy`, shared or static; `record-colink.c` tests that. The build
-offers it only when asked to - `-Drecording=true` with `zig build` - shared or
-static as the library itself.
+offers it only when asked to - `-DENABLE_RECORDING=ON` with CMake,
+`-Drecording=true` with `zig build` - shared or static as the library itself.
 `jitterentropy-record-lib.c` compiles the copy and the recording as one
 translation unit, a private copy (`JENT_PRIVATE_COMPILE`) in which every
 function of the library is static, so both the archive and the shared library
 define the recording and nothing else by construction, with any toolchain.
 On the ELF linkers `record.lds` limits the shared library's exports to the API
-of `jitterentropy-record.h` as well; `build.zig` checks it against the header.
+of `jitterentropy-record.h` as well; CMake checks it against the header.
 
 `jitterentropy-hashtime` compiles the same recording code into itself rather
 than linking the library, so a recording made through the library and one made

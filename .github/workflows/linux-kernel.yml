@@ -38,6 +38,9 @@ jobs:
               CONFIG_EXTERNAL_JITTERENTROPY_HWRNG=n
     steps:
       - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
 
       - name: Install kernel headers
         run: |
@@ -112,6 +115,9 @@ jobs:
             testinterface: 'true'
     steps:
       - uses: actions/checkout@v5
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
 
       - name: Install DKMS and kernel headers
         run: |
@@ -158,8 +164,8 @@ jobs:
 
       - name: Build and install
         run: |
-          sudo dkms build -m jitterentropy -v "$VERSION" -k "$KVER"
-          sudo dkms install -m jitterentropy -v "$VERSION" -k "$KVER"
+          sudo env "PATH=$PATH" dkms build -m jitterentropy -v "$VERSION" -k "$KVER"
+          sudo env "PATH=$PATH" dkms install -m jitterentropy -v "$VERSION" -k "$KVER"
           dkms status
 
       - name: Show and check the installed module
@@ -236,6 +242,9 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: jitterentropy-library
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
 
       - name: Install the kernel build dependencies
         run: |

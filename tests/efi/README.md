@@ -49,7 +49,7 @@ implementation does not provide and the compiler may emit calls to regardless:
 
 | Function | Supplied by |
 | --- | --- |
-| `memcpy`, `memset` | Zig EFI support shim (`build.zig`) |
+| `memcpy`, `memset` | gnu-efi |
 | `malloc`, `free` | this application, over `AllocatePool()` / `FreePool()` |
 | `strlen` | this application |
 | `snprintf` | this application, for `jent_status()` and nothing else |
@@ -161,34 +161,42 @@ nix build .#checks.x86_64-linux.efi-vm       # build it and boot it under OVMF
 The check writes the console transcript to `result/console.txt`. CI runs that
 one on every push; see below for why it does not run the aarch64 one.
 
-By hand, with Zig:
+By hand, with gnu-efi installed:
 
 ```
-zig build -Defi=true
-qemu-system-x86_64 -machine q35 -cpu max -m 512 -nographic -no-reboot \
+make -C tests/efi GNUEFI=/usr esp
+qemu-system-x86_64 -machine q35 -m 512 -nographic -no-reboot \
   -drive if=pflash,format=raw,unit=0,readonly=on,file=/path/to/OVMF_CODE.fd \
   -drive if=pflash,format=raw,unit=1,file=OVMF_VARS.fd \
-  -drive format=raw,file=fat:rw:zig-out/efi \
+  -drive format=raw,file=fat:rw:tests/efi/esp \
   -serial mon:stdio
 ```
 
-`zig-out/efi/EFI/BOOT/BOOTX64.EFI` is the removable-media default path, so the firmware
+`esp/EFI/BOOT/BOOTX64.EFI` is the removable-media default path, so the firmware
 boots it with no boot entry configured - and it is also what to copy onto a USB
 stick to run this on real hardware, which is the more interesting machine to
 run it on.
 
 ## Both architectures
 
-x86_64 and aarch64, which is where the firmware in the field is. `zig build -Defi=true`
-cross-compiles both images (`BOOTX64.EFI` and `BOOTAA64.EFI`) into `zig-out/efi/EFI/BOOT/`
-in a single invocation:
+x86_64 and aarch64, which is where the firmware in the field is. The
+application is the same source; what differs is the toolchain and how the image
+is put together, and the Makefile says so at each point:
 
 | | x86_64 | aarch64 |
 | --- | --- | --- |
 | Image | `BOOTX64.EFI` | `BOOTAA64.EFI` |
-| Target | `x86_64-uefi-msvc` | `aarch64-uefi-msvc` |
+| Calling convention | Microsoft, so `-DGNU_EFI_USE_MS_ABI` and (on GCC) `-maccumulate-outgoing-args` | the compiler's own |
 | Red zone | disabled: the firmware takes interrupts on the same stack | none to disable |
+| PE conversion | `objcopy --output-target pei-x86-64` | `objcopy --output-target pei-aarch64-little` |
+| Page size | the linker default | `-z common-page-size=4096 -z max-page-size=4096`, the granularity the firmware maps at |
 | Atomics | inline | `-mno-outline-atomics`, see below |
+
+gnu-efi's own build rules fall back to a flat `objcopy -O binary` for aarch64,
+relying on their startup code carrying a hand-written PE header, wherever
+`objcopy` has no PE target for the architecture. binutils does have one -
+`pei-aarch64-little` - and the fallback does not produce an image this firmware
+will load at all, so the real thing is written instead.
 
 `-mno-outline-atomics` is required, and it is a fact about porting this
 library to aarch64 rather than about EFI. GCC 10 and later default to
@@ -229,14 +237,16 @@ aarch64 image is cross-built, and a runner with no aarch64 toolchain in its
 cache spends about an hour building one before it reaches the seconds of
 booting that are the point.
 
-By hand, booting the aarch64 image built by `zig build -Defi=true`:
+By hand, cross-building aarch64 needs gnu-efi for that architecture and a cross
+toolchain:
 
 ```
-zig build -Defi=true
+make -C tests/efi EFI_ARCH=aarch64 GNUEFI=/path/to/aarch64/gnu-efi \
+  CROSS_COMPILE=aarch64-linux-gnu- esp
 qemu-system-aarch64 -machine virt -cpu max -m 512 -nographic -no-reboot \
   -drive if=pflash,format=raw,unit=0,readonly=on,file=AAVMF_CODE.fd \
   -drive if=pflash,format=raw,unit=1,file=AAVMF_VARS.fd \
-  -drive format=raw,file=fat:rw:zig-out/efi
+  -drive format=raw,file=fat:rw:tests/efi/esp
 ```
 
 The two images have different default names, so one EFI system partition can
