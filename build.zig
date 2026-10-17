@@ -249,6 +249,15 @@ pub fn build(b: *std.Build) void {
     record_options.addOption(bool, "raw_memory_access", raw_memory_access);
 
     const os_tag = target.result.os.tag;
+    const recording_tool_options = b.addOptions();
+    recording_tool_options.addOption(bool, "libgcrypt", external_crypto == .libgcrypt);
+    recording_tool_options.addOption(bool, "openssl", external_crypto == .openssl);
+    recording_tool_options.addOption(
+        bool,
+        "cpu_pinning",
+        os_tag == .linux or os_tag == .freebsd or os_tag == .netbsd or
+            os_tag == .windows,
+    );
     const c_flags = getCFlags(b, target, opts, &.{}) catch @panic("OOM");
 
     const zig_core_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
@@ -383,7 +392,12 @@ pub fn build(b: *std.Build) void {
             .root_module = colink_mod,
         });
         const run_colink = addSkipAwareTestRun(b, test_runner_exe, colink_exe, tsan_options);
-        run_colink.addArg(".zig-cache/record-colink");
+        const cache_root_path: std.Build.LazyPath =
+            if (@hasField(std.Build, "cache_root"))
+                .{ .cwd_relative = b.cache_root.path orelse "." }
+            else
+                .cache_root;
+        run_colink.addDecoratedDirectoryArg("", cache_root_path, "/record-colink");
         test_step.dependOn(&run_colink.step);
     }
 
@@ -509,17 +523,16 @@ pub fn build(b: *std.Build) void {
         "arch/jitterentropy-arch-atomic.c",
     }, false, false);
 
-    const flags_exe = addToolExecutable(
+    const flags_exe = addZigToolExecutable(
         b,
         "jitterentropy-flags",
-        "tests/raw-entropy/recording_userspace/jitterentropy-flags.c",
+        "tests/raw-entropy/recording_userspace/jitterentropy_flags.zig",
         target,
         optimize,
         opts,
         linkage,
-        c_flags,
+        recording_tool_options,
         null,
-        false,
     );
 
     if (enable_tools) {
@@ -527,32 +540,30 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(health_exe);
         b.installArtifact(flags_exe);
 
-        const rng_exe = addToolExecutable(
+        const rng_exe = addZigToolExecutable(
             b,
             "jitterentropy-rng",
-            "tests/raw-entropy/recording_userspace/jitterentropy-rng.c",
+            "tests/raw-entropy/recording_userspace/jitterentropy_rng.zig",
             target,
             optimize,
             opts,
             linkage,
-            c_flags,
+            recording_tool_options,
             lib,
-            os_tag != .windows,
         );
         configureInstallRPath(rng_exe.root_module, os_tag, linkage);
         b.installArtifact(rng_exe);
 
-        const osr_exe = addToolExecutable(
+        const osr_exe = addZigToolExecutable(
             b,
             "jitterentropy-osr",
-            "tests/raw-entropy/recording_userspace/jitterentropy-osr.c",
+            "tests/raw-entropy/recording_userspace/jitterentropy_osr.zig",
             target,
             optimize,
             opts,
             linkage,
-            c_flags,
+            recording_tool_options,
             lib,
-            os_tag != .windows,
         );
         configureInstallRPath(osr_exe.root_module, os_tag, linkage);
         b.installArtifact(osr_exe);
@@ -570,6 +581,9 @@ pub fn build(b: *std.Build) void {
             raw_memory_access,
         );
         const hashtime_mod = createCModule(b, target, optimize, opts, null);
+        hashtime_mod.root_source_file =
+            b.path("tests/raw-entropy/recording_userspace/jitterentropy_hashtime.zig");
+        hashtime_mod.addOptions("tool_options", recording_tool_options);
         configureIncludePaths(b, hashtime_mod);
         hashtime_mod.addIncludePath(b.path("tests"));
         hashtime_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
@@ -579,15 +593,6 @@ pub fn build(b: *std.Build) void {
         if (hashtime_record_linkage == .static) {
             hashtime_mod.addCMacro("JENT_RECORD_STATIC_LIB", "1");
         }
-        if (os_tag == .linux or os_tag == .freebsd or os_tag == .netbsd or
-            os_tag == .windows)
-        {
-            hashtime_mod.addCMacro("JENT_HAVE_CPU_PINNING", "1");
-        }
-        hashtime_mod.addCSourceFile(.{
-            .file = b.path("tests/raw-entropy/recording_userspace/jitterentropy-hashtime.c"),
-            .flags = c_flags,
-        });
         const hashtime_exe = b.addExecutable(.{
             .name = "jitterentropy-hashtime",
             .root_module = hashtime_mod,
@@ -1493,6 +1498,31 @@ fn addToolExecutable(
         .file = b.path(src_path),
         .flags = c_flags,
     });
+    return b.addExecutable(.{
+        .name = name,
+        .root_module = mod,
+    });
+}
+
+fn addZigToolExecutable(
+    b: *std.Build,
+    name: []const u8,
+    src_path: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    opts: BuildOptions,
+    linkage: std.builtin.LinkMode,
+    tool_options: *std.Build.Step.Options,
+    lib: ?*std.Build.Step.Compile,
+) *std.Build.Step.Compile {
+    const mod = createCModule(b, target, optimize, opts, null);
+    mod.root_source_file = b.path(src_path);
+    mod.addOptions("tool_options", tool_options);
+    configureCommonDefines(b, mod, target, opts, linkage, false);
+    if (lib) |library| {
+        mod.linkLibrary(library);
+        configureCryptoLibraries(mod, opts);
+    }
     return b.addExecutable(.{
         .name = name,
         .root_module = mod,
