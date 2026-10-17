@@ -1948,7 +1948,7 @@ static int jent_get_cpus(struct jent_cpu_list *list)
 /*
  * FreeBSD is the one system here that can place a thread on a chosen CPU, so
  * the one whose CPUs can be described individually. Same call the library
- * pins its counting thread with (arch/jitterentropy-arch-thread.c).
+ * pins its counting thread with (src/arch/thread.zig).
  */
 #ifdef __FreeBSD__
 # include <sys/cpuset.h>

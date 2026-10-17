@@ -44,7 +44,7 @@
  *
  * Provides jent_ncpu() returning the number of logical CPUs the calling thread
  * may run on, or a negative errno on failure. The dispatch (see
- * arch/jitterentropy-arch-ncpu.c) is:
+ * src/arch/ncpu.zig) is:
  *   - Windows                        -> GetThreadGroupAffinity(), with
  *                                       GetActiveProcessorCount(
  *                                       ALL_PROCESSOR_GROUPS) as fallback
@@ -60,7 +60,7 @@
  *   - Linux Kernel                   -> num_online_cpus() (status only,
  *                                       no timer thread)
  *   - FreeBSD Kernel                 -> mp_ncpus
- *   - other (e.g. baremetal)         -> 1 (timer thread will be disabled)
+ *   - freestanding / UEFI            -> -ENODEV
  *
  * Provides jent_cpu_highest() returning the highest of those CPU numbers - the
  * one a thread may be pinned to - or a negative errno. Not the count minus

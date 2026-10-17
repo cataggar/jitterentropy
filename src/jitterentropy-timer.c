@@ -65,7 +65,7 @@ static int jent_notime_init_flags(void **ctx, unsigned int flags)
 	/*
 	 * We need at least two CPUs to enable the timer thread - and a thread
 	 * backend: freestanding builds have only the stub that fails to start
-	 * one (see jitterentropy-arch-thread.c), whatever the CPU count.
+	 * one (see src/arch/thread.zig), whatever the CPU count.
 	 */
 	if (ncpu < 2 || !JENT_NOTIME_BUILTIN_BACKEND)
 		return -ENOENT;

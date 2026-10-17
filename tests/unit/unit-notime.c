@@ -242,48 +242,13 @@ enum fi_sysconf_mode {
 	FI_SYSCONF_HUGE,	/* more CPUs than any topology has */
 };
 
-static enum fi_sysconf_mode fi_sysconf_mode;
-static JENT_UT_MAYBE_UNUSED int fi_fail_affinity;
-
-static long fi_sysconf_real(int name)
-{
-	return sysconf(name);
-}
-
-static long fi_sysconf(int name)
-{
-	switch (fi_sysconf_mode) {
-	case FI_SYSCONF_FAIL:
-		errno = EINVAL;
-		return -1;
-	case FI_SYSCONF_ZERO:
-		return 0;
-	case FI_SYSCONF_HUGE:
-		return 1L << 20;
-	case FI_SYSCONF_REAL:
-	default:
-		return fi_sysconf_real(name);
-	}
-}
+extern int jent_fi_ncpu_sysconf_mode;
+extern int jent_fi_fail_affinity;
+# define fi_sysconf_mode jent_fi_ncpu_sysconf_mode
+# define fi_fail_affinity jent_fi_fail_affinity
 #endif /* FI_WINDOWS */
 
 static JENT_UT_MAYBE_UNUSED int fi_fail_getrandom;
-
-#ifdef __linux__
-static int fi_sched_getaffinity_real(pid_t pid, size_t size, cpu_set_t *set)
-{
-	return sched_getaffinity(pid, size, set);
-}
-
-static int fi_sched_getaffinity(pid_t pid, size_t size, cpu_set_t *set)
-{
-	if (fi_fail_affinity) {
-		errno = EPERM;
-		return -1;
-	}
-	return fi_sched_getaffinity_real(pid, size, set);
-}
-#endif
 
 #ifdef FI_HAVE_GETRANDOM
 static ssize_t fi_getrandom_real(void *buf, size_t len, unsigned int flags)
@@ -301,26 +266,9 @@ static ssize_t fi_getrandom(void *buf, size_t len, unsigned int flags)
 }
 #endif
 
-#ifndef FI_WINDOWS
-# define sysconf fi_sysconf
-#endif
-#ifdef __linux__
-# define sched_getaffinity fi_sched_getaffinity
-#endif
 #ifdef FI_HAVE_GETRANDOM
 # define getrandom fi_getrandom
 #endif
-
-/*
- * The two things the timer-less mode depends on and cannot do anything about:
- * how many CPUs there are, and whether a thread can be created. Interposed
- * ahead of the sources that call them, by the same renaming. A machine with
- * one CPU and a machine that has run out of threads are both configurations
- * the library has to handle and neither is one a test can be run on.
- */
-#define jent_ncpu jent_fi_real_ncpu
-#include "jitterentropy-arch-ncpu.c"
-#undef jent_ncpu
 
 /*
  * The thread call itself, so the thread backend's own failure handling runs
@@ -328,91 +276,24 @@ static ssize_t fi_getrandom(void *buf, size_t len, unsigned int flags)
  * release what it had already acquired and leave the started flag clear, so
  * that the matching join does not operate on a thread ID that was never set.
  *
- * JENT_WIN_THREADS is settled by now - jitterentropy.h came in with the ncpu
- * source above - so the backend the library will compile is known here, unlike
- * the memory one further up.
- *
  * All of it is behind JENT_CONF_ENABLE_INTERNAL_TIMER, as the backend is: with
- * the option off none of these functions or types exist, so there is nothing
- * to interpose. The source is still included so this configuration compiles it
- * too.
+ * the option off none of these functions or types exist. The Zig backend
+ * exposes fault-injection variables instead of being textually included with
+ * renamed libc calls.
  */
-#ifndef JENT_CONF_ENABLE_INTERNAL_TIMER
-
-#include "jitterentropy-arch-thread.c"
-
-#elif defined(JENT_WIN_THREADS)
-
-#include <process.h>	/* _beginthreadex() */
-
-static int fi_fail_thread_start;
-
-static uintptr_t fi_beginthreadex(void *security, unsigned int stack_size,
-				  unsigned int (__stdcall *start)(void *),
-				  void *arg, unsigned int initflag,
-				  unsigned int *thrdaddr)
-{
-	if (fi_fail_thread_start) {
-		/*
-		 * The failure the backend reads back: _beginthreadex() reports
-		 * the reason in errno, and EAGAIN is what a refused thread
-		 * gives.
-		 */
-		errno = EAGAIN;
-		return 0;
-	}
-	return _beginthreadex(security, stack_size, start, arg, initflag,
-			      thrdaddr);
-}
-
-#define _beginthreadex fi_beginthreadex
-#define jent_notime_thread_create jent_fi_real_thread_create
-#include "jitterentropy-arch-thread.c"
-#undef jent_notime_thread_create
-#undef _beginthreadex
-
-#else /* JENT_WIN_THREADS */
-
-#include <pthread.h>
-
-static int fi_fail_pthread_create;
-static int fi_fail_pthread_attr;
-
-static int fi_pthread_create_real(pthread_t *t, const pthread_attr_t *a,
-				  void *(*r)(void *), void *arg)
-{
-	return pthread_create(t, a, r, arg);
-}
-
-static int fi_pthread_attr_init_real(pthread_attr_t *a)
-{
-	return pthread_attr_init(a);
-}
-
-static int fi_pthread_create(pthread_t *t, const pthread_attr_t *a,
-			     void *(*r)(void *), void *arg)
-{
-	if (fi_fail_pthread_create)
-		return EAGAIN;
-	return fi_pthread_create_real(t, a, r, arg);
-}
-
-static int fi_pthread_attr_init(pthread_attr_t *a)
-{
-	if (fi_fail_pthread_attr)
-		return ENOMEM;
-	return fi_pthread_attr_init_real(a);
-}
-
-#define pthread_create fi_pthread_create
-#define pthread_attr_init fi_pthread_attr_init
-#define jent_notime_thread_create jent_fi_real_thread_create
-#include "jitterentropy-arch-thread.c"
-#undef jent_notime_thread_create
-#undef pthread_attr_init
-#undef pthread_create
-
-#endif /* JENT_WIN_THREADS */
+#ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
+extern int jent_fi_fail_thread_start;
+extern int jent_fi_fail_pthread_create;
+extern int jent_fi_fail_pthread_attr;
+extern int jent_fi_fail_thread_create;
+extern int jent_fi_real_thread_create(struct jent_notime_ctx *ctx,
+				     jent_notime_start_routine start_routine,
+				     void *arg);
+# define fi_fail_thread_start jent_fi_fail_thread_start
+# define fi_fail_pthread_create jent_fi_fail_pthread_create
+# define fi_fail_pthread_attr jent_fi_fail_pthread_attr
+# define fi_fail_thread_create jent_fi_fail_thread_create
+#endif
 
 /*
  * The time source, interposed for the same reason. Everything the startup
@@ -462,35 +343,9 @@ void jent_get_nstime(uint64_t *out)
 }
 
 
-/* Negative reports the count as undiscoverable; 0 forwards to the real one. */
-static long fi_ncpu;
+extern long jent_fi_ncpu;
+#define fi_ncpu jent_fi_ncpu
 
-long jent_ncpu(void)
-{
-	if (fi_ncpu)
-		return fi_ncpu;
-	return jent_fi_real_ncpu();
-}
-
-#ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
-static int fi_fail_thread_create;
-
-int jent_notime_thread_create(struct jent_notime_ctx *ctx,
-			      jent_notime_start_routine start_routine,
-			      void *arg)
-{
-	if (fi_fail_thread_create)
-		return -EAGAIN;
-	return jent_fi_real_thread_create(ctx, start_routine, arg);
-}
-#endif /* JENT_CONF_ENABLE_INTERNAL_TIMER */
-
-#ifndef FI_WINDOWS
-# undef sysconf
-#endif
-#ifdef __linux__
-# undef sched_getaffinity
-#endif
 #ifdef FI_HAVE_GETRANDOM
 # undef getrandom
 #endif

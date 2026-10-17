@@ -44,8 +44,7 @@
  *
  * The internal ("notime") timer spawns a helper thread that does nothing
  * but increment a counter. This header declares the two pieces of code
- * that differ between platforms; the definitions live in
- * arch/jitterentropy-arch-thread.c.
+ * that differ between platforms; the definitions live in src/arch/thread.zig.
  *
  *   1. Thread creation / joining. jent_notime_thread_create() /
  *      jent_notime_thread_join() hide the back-end behind a single
@@ -90,11 +89,11 @@
  * JENT_ARCH_THREAD_* macros) and where struct jent_notime_ctx and
  * jent_notime_start_routine are defined - both are part of the public
  * interface, since a consumer installing its own thread handler is handed that
- * context. This header only declares what arch/jitterentropy-arch-thread.c
+ * context. This header only declares what src/arch/thread.zig
  * implements on top of them.
  */
 
-/* Definitions in arch/jitterentropy-arch-thread.c. */
+/* Definitions in src/arch/thread.zig. */
 JENT_INTERNAL
 int jent_thread_pin_to_cpu(unsigned long cpu);
 JENT_INTERNAL

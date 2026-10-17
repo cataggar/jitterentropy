@@ -1,6 +1,33 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
 pub const build_options = internal.build_options;
+pub const arch = struct {
+    pub const ncpu = @import("arch/ncpu.zig");
+    pub const thread = @import("arch/thread.zig");
+};
+
+comptime {
+    _ = arch.ncpu.jent_ncpu;
+    _ = arch.ncpu.jent_cpu_highest;
+    _ = arch.ncpu.jent_parse_cpulist;
+    _ = arch.ncpu.jent_fi_real_ncpu;
+    _ = arch.ncpu.jent_cpu_to_group;
+    _ = arch.ncpu.jent_fi_ncpu;
+    _ = arch.ncpu.jent_fi_fail_affinity;
+    _ = arch.ncpu.jent_fi_empty_affinity;
+    _ = arch.ncpu.jent_fi_fail_cpu_alloc;
+    _ = arch.ncpu.jent_fi_ncpu_sysconf_mode;
+    if (build_options.internal_timer) {
+        _ = arch.thread.jent_thread_pin_to_cpu;
+        _ = arch.thread.jent_notime_thread_create;
+        _ = arch.thread.jent_fi_real_thread_create;
+        _ = arch.thread.jent_notime_thread_join;
+        _ = arch.thread.jent_fi_fail_thread_create;
+        _ = arch.thread.jent_fi_fail_pthread_create;
+        _ = arch.thread.jent_fi_fail_pthread_attr;
+        _ = arch.thread.jent_fi_fail_thread_start;
+    }
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +175,6 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(arch.ncpu);
+    std.testing.refAllDecls(arch.thread);
 }

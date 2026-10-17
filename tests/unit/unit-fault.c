@@ -294,54 +294,15 @@ enum fi_sysconf_mode {
 	FI_SYSCONF_HUGE,	/* more CPUs than any topology has */
 };
 
-static enum fi_sysconf_mode fi_sysconf_mode;
-static int fi_fail_affinity;
-static int fi_empty_affinity;
-
-static long fi_sysconf_real(int name)
-{
-	return sysconf(name);
-}
-
-static long fi_sysconf(int name)
-{
-	switch (fi_sysconf_mode) {
-	case FI_SYSCONF_FAIL:
-		errno = EINVAL;
-		return -1;
-	case FI_SYSCONF_ZERO:
-		return 0;
-	case FI_SYSCONF_HUGE:
-		return 1L << 20;
-	case FI_SYSCONF_REAL:
-	default:
-		return fi_sysconf_real(name);
-	}
-}
+extern int jent_fi_ncpu_sysconf_mode;
+extern int jent_fi_fail_affinity;
+extern int jent_fi_empty_affinity;
+# define fi_sysconf_mode jent_fi_ncpu_sysconf_mode
+# define fi_fail_affinity jent_fi_fail_affinity
+# define fi_empty_affinity jent_fi_empty_affinity
 #endif /* FI_WINDOWS */
 
 static int fi_fail_getrandom;
-
-#ifdef __linux__
-static int fi_sched_getaffinity_real(pid_t pid, size_t size, cpu_set_t *set)
-{
-	return sched_getaffinity(pid, size, set);
-}
-
-static int fi_sched_getaffinity(pid_t pid, size_t size, cpu_set_t *set)
-{
-	if (fi_fail_affinity) {
-		errno = EPERM;
-		return -1;
-	}
-	if (fi_empty_affinity) {
-		/* Succeeds, but names no CPU - not a usable count either. */
-		memset(set, 0, size);
-		return 0;
-	}
-	return fi_sched_getaffinity_real(pid, size, set);
-}
-#endif
 
 #ifdef FI_HAVE_GETRANDOM
 static ssize_t fi_getrandom_real(void *buf, size_t len, unsigned int flags)
@@ -365,67 +326,20 @@ static ssize_t fi_getrandom(void *buf, size_t len, unsigned int flags)
  */
 static int fi_force_fips_enabled;
 
-/*
- * The CPU-set allocation the affinity query needs. CPU_ALLOC is a macro over
- * an allocator, so a machine that is out of memory at that moment is the only
- * way its failure path runs.
- */
+/* The CPU-set allocation used when the Linux affinity mask must grow. */
 #if defined(__linux__) && defined(CPU_ALLOC)
-static int fi_fail_cpu_alloc;
-
-/*
- * size_t, as __sched_cpualloc() behind the real CPU_ALLOC() takes: the callers
- * pass an unsigned count, and an int parameter would make every one of them a
- * signedness conversion.
- */
-static void *fi_cpu_alloc(size_t count)
-{
-	if (fi_fail_cpu_alloc)
-		return NULL;
-	return CPU_ALLOC(count);
-}
+extern int jent_fi_fail_cpu_alloc;
+# define fi_fail_cpu_alloc jent_fi_fail_cpu_alloc
 # define FI_HAVE_CPU_ALLOC
 #endif
 
-#ifndef FI_WINDOWS
-# define sysconf fi_sysconf
-#endif
-#ifdef __linux__
-# define sched_getaffinity fi_sched_getaffinity
-#endif
-#ifdef FI_HAVE_CPU_ALLOC
-# undef CPU_ALLOC
-# define CPU_ALLOC(n) fi_cpu_alloc(n)
-#endif
 #ifdef FI_HAVE_GETRANDOM
 # define getrandom fi_getrandom
 #endif
 
-/*
- * The two things the timer-less mode depends on and cannot do anything about:
- * how many CPUs there are, and whether a thread can be created. Interposed
- * ahead of the sources that call them, by the same renaming. A machine with
- * one CPU and a machine that has run out of threads are both configurations
- * the library has to handle and neither is one a test can be run on.
- */
-#define jent_ncpu jent_fi_real_ncpu
-#include "jitterentropy-arch-ncpu.c"
-#undef jent_ncpu
-
-/*
- * The whole thread back-end - the context type, the start routine type and
- * every function over them - is behind JENT_CONF_ENABLE_INTERNAL_TIMER, in
- * arch/jitterentropy-arch-thread.h as well as in the source. With the option
- * off there is no thread creation left to fail, so the interposition and the
- * override below are compiled out with it rather than referring to types that
- * this configuration does not declare.
- */
 #ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
-#define jent_notime_thread_create jent_fi_real_thread_create
-#include "jitterentropy-arch-thread.c"
-#undef jent_notime_thread_create
-#else
-#include "jitterentropy-arch-thread.c"
+extern int jent_fi_fail_thread_create;
+# define fi_fail_thread_create jent_fi_fail_thread_create
 #endif
 
 /*
@@ -481,27 +395,13 @@ static void fi_time_set(enum fi_time_mode mode)
 	fi_time_value = 0x8000000000000000ULL;
 }
 
-/* Negative reports the count as undiscoverable; 0 forwards to the real one. */
-static long fi_ncpu;
-
-long jent_ncpu(void)
-{
-	if (fi_ncpu)
-		return fi_ncpu;
-	return jent_fi_real_ncpu();
-}
+extern long jent_fi_ncpu;
+#define fi_ncpu jent_fi_ncpu
 
 #ifdef JENT_CONF_ENABLE_INTERNAL_TIMER
-static int fi_fail_thread_create;
-
-int jent_notime_thread_create(struct jent_notime_ctx *ctx,
-			      jent_notime_start_routine start_routine,
-			      void *arg)
-{
-	if (fi_fail_thread_create)
-		return -EAGAIN;
-	return jent_fi_real_thread_create(ctx, start_routine, arg);
-}
+extern int jent_fi_real_thread_create(struct jent_notime_ctx *ctx,
+				     jent_notime_start_routine start_routine,
+				     void *arg);
 #endif /* JENT_CONF_ENABLE_INTERNAL_TIMER */
 
 int jent_fips_enabled(void);
@@ -523,12 +423,6 @@ int jent_fips_enabled(void)
 }
 #include "jitterentropy-arch-random.c"
 
-#ifndef FI_WINDOWS
-# undef sysconf
-#endif
-#ifdef __linux__
-# undef sched_getaffinity
-#endif
 #ifdef FI_HAVE_GETRANDOM
 # undef getrandom
 #endif
@@ -980,7 +874,7 @@ static void test_platform_query_failures(void)
 #else
 	/* The CPU count. Whatever it says, it must be a count or an error. */
 	fi_fail_affinity = 1;
-#ifdef JENT_ARCH_NCPU_LINUX_SYSFS
+#if defined(__linux__) && !defined(__GLIBC__)
 	/*
 	 * A third source sits between the two this interposes: on a Linux libc
 	 * that is not glibc, jent_ncpu() reads /sys/devices/system/cpu/online
@@ -1004,7 +898,7 @@ static void test_platform_query_failures(void)
 
 	fi_sysconf_mode = FI_SYSCONF_ZERO;
 	JENT_UT_TRUE(jent_ncpu() < 0, "and so is a count of zero");
-#endif /* JENT_ARCH_NCPU_LINUX_SYSFS */
+#endif /* Linux non-glibc sysfs fallback */
 
 #ifdef FI_HAVE_CPU_ALLOC
 	/* No CPU set to ask with: the query is skipped, not attempted. */

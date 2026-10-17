@@ -133,8 +133,8 @@ typedef intptr_t ssize_t;
  * <CoreServices/CoreServices.h> in particular is a large umbrella framework
  * that no part of the library references - and one that does not exist in the
  * iOS/tvOS/watchOS SDKs, all of which define __MACH__. The one place that
- * does need Mach interfaces (arch/jitterentropy-arch-thread.c) includes
- * exactly what it uses itself.
+ * does need Mach interfaces (src/arch/thread.zig) declares exactly what it
+ * uses itself.
  */
 
 #endif /* LINUX_KERNEL */
