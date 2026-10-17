@@ -205,9 +205,9 @@ to a libgcc helper that selects the LSE or the LL/SC implementation at run
 time through a libgcc ifunc. The library has two such operations in
 `arch/jitterentropy-arch-atomic.c`, both on the path every EFI startup takes:
 `jent_atomic_cmpxchg_u32()` stores the common timer divisor
-(`src/jitterentropy-gcd.c`), and `jent_atomic_inc_u32()` advances the counter
+(`src/gcd.zig`), and `jent_atomic_inc_u32()` advances the counter
 the instance UUID is derived from where no CSPRNG answers
-(`src/jitterentropy-uuid.c`); outlined, they become `__aarch64_cas4_*` and
+(`src/uuid.zig`); outlined, they become `__aarch64_cas4_*` and
 `__aarch64_ldadd4_*`. A `-nostdlib` link has no libgcc, so the symbol stays
 undefined and the first such access jumps into nothing - as it once did for
 `__aarch64_swp4_acq_rel`, the exchange the file had then.

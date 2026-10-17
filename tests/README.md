@@ -32,15 +32,15 @@ directories:
 
 | Program | Covers |
 | --- | --- |
-| `unit-sha3` | `src/jitterentropy-sha3.c`: the library's own known answer tests, the FIPS 202 SHA3-256 vectors, incremental absorb, SHAKE256 / XDRBG block generation, the rate of an initialized state |
-| `unit-gcd` | `src/jitterentropy-gcd.c`: the Euclidean GCD, the delta history analysis and each condition it reports, and the establish-once-per-clock semantics of the common timer GCD - the platform clock and the counting thread keep a divisor of their own |
+| `unit-sha3` | `src/sha3.zig`: the library's own known answer tests, the FIPS 202 SHA3-256 vectors, incremental absorb, SHAKE256 / XDRBG block generation, the rate of an initialized state |
+| `unit-gcd` | `src/gcd.zig`: the Euclidean GCD, the delta history analysis and each condition it reports, and the establish-once-per-clock semantics of the common timer GCD - the platform clock and the counting thread keep a divisor of their own |
 | `unit-arch-cache` | `arch/`: cache size discovery - the sysfs walk, the CPUID and `/proc/cpuinfo` fallbacks, the `sysconf` fallback and the rounding of what they find |
 | `unit-arch-fips` | `arch/`: the FIPS mode query, including the file read behind it and its retry on `EINTR` |
 | `unit-arch-memory` | `arch/`: the (secure) allocator and its guard pages |
 | `unit-arch-ncpu` | `arch/`: the CPU count and the highest CPU - the Linux affinity mask and the set it grows, the online list and `sysconf` fallbacks behind it, and the Windows group affinity |
 | `unit-arch-sched` | `arch/`: thread placement and yielding, `jent_thread_pin_to_cpu()` and `jent_yield()` |
 | `unit-arch-timer` | `arch/`: the time source |
-| `unit-uuid` | `src/jitterentropy-uuid.c`: the RFC 9562 version 4 layout, the version and variant bits, the OS CSPRNG read behind it and its `/dev/urandom` fallback, and the counter-derived version 8 UUID used without a CSPRNG |
+| `unit-uuid` | `src/uuid.zig`: the RFC 9562 version 4 layout, the version and variant bits, the OS CSPRNG read behind it and its `/dev/urandom` fallback, and the counter-derived version 8 UUID used without a CSPRNG |
 | `unit-base-api` | `src/jitterentropy-base.c` and `src/jitterentropy-status.c` through the API: initialization, collector allocation and its conflicting flags, the `jent_entropy_collector_*` accessors, the `jent_read_entropy*` error contract, the JSON status and its values, the UUID output, the startup self tests and what a failed one stops, the compliance modes and the secure memory query |
 | `unit-base-config` | The decoding of every memory size and hash loop flag, oversampling rate clamping and the version |
 | `unit-base-gen` | The generation itself: the internal timer, the measurement and memory access variants, the startup states and the matrix of generation modes |

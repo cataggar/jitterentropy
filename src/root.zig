@@ -1,6 +1,33 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
 pub const build_options = internal.build_options;
+pub const sha3 = @import("sha3.zig");
+pub const uuid = @import("uuid.zig");
+pub const gcd = @import("gcd.zig");
+
+comptime {
+    _ = sha3.keccakf;
+    _ = sha3.jent_sha3_init;
+    _ = sha3.jent_sha3_256_init;
+    _ = sha3.jent_shake256_init;
+    _ = sha3.jent_sha3_update;
+    _ = sha3.jent_sha3_final;
+    _ = sha3.jent_drbg_generate_block;
+    _ = sha3.jent_sha3_tester;
+    _ = uuid.jent_uuid_format;
+    _ = uuid.jent_uuid_from_counter;
+    _ = uuid.jent_uuid_generate;
+    _ = gcd.jent_common_timer_gcd;
+    _ = gcd.jent_gcd64;
+    _ = gcd.jent_gcd_analyze_internal;
+    _ = gcd.jent_gcd_verdict;
+    _ = gcd.jent_gcd_store;
+    _ = gcd.jent_gcd_analyze;
+    _ = gcd.jent_gcd_init;
+    _ = gcd.jent_gcd_fini;
+    _ = gcd.jent_gcd_get;
+    _ = gcd.jent_gcd_selftest;
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +175,7 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(sha3);
+    std.testing.refAllDecls(uuid);
+    std.testing.refAllDecls(gcd);
 }

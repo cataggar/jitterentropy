@@ -619,8 +619,10 @@ pub extern fn jent_sha3_tester() callconv(.c) c_int;
 pub extern fn jent_shake256_init(ctx: *jent_sha_ctx) callconv(.c) void;
 pub extern fn jent_drbg_generate_block(ctx: *jent_sha_ctx, dst: [*]u8, dst_len: usize) callconv(.c) void;
 
-pub extern fn jent_gcd_analyze(delta_history: [*]u64, nelem: usize, osr: usize, notime: c_uint) callconv(.c) c_int;
-pub extern fn jent_gcd_verdict(delta_history: [*]u64, nelem: usize, osr: usize, gcd: *u64) callconv(.c) c_int;
+pub extern fn jent_gcd64(a: u64, b: u64) callconv(.c) u64;
+pub extern fn jent_gcd_analyze_internal(delta_history: ?[*]u64, nelem: usize, running_gcd_out: *u64, delta_sum_out: *u64) callconv(.c) c_int;
+pub extern fn jent_gcd_analyze(delta_history: ?[*]u64, nelem: usize, osr: usize, notime: c_uint) callconv(.c) c_int;
+pub extern fn jent_gcd_verdict(delta_history: ?[*]u64, nelem: usize, osr: usize, gcd: *u64) callconv(.c) c_int;
 pub extern fn jent_gcd_store(gcd: u64, notime: c_uint) callconv(.c) void;
 pub extern fn jent_gcd_init(nelem: usize, flags: c_uint) callconv(.c) ?[*]u64;
 pub extern fn jent_gcd_fini(delta_history: ?[*]u64, nelem: usize) callconv(.c) void;
@@ -646,6 +648,8 @@ pub extern fn jent_measure_jitter(ec: *rand_data, loop_cnt: u64, ret_current_del
 pub extern fn jent_random_data(ec: *rand_data) callconv(.c) void;
 pub extern fn jent_read_random_block(ec: *rand_data, dst: [*]u8, dst_len: usize) callconv(.c) void;
 
+pub extern fn jent_uuid_format(bytes: [*]const u8, out: [*]u8) callconv(.c) void;
+pub extern fn jent_uuid_from_counter(bytes: [*]u8) callconv(.c) void;
 pub extern fn jent_uuid_generate(out: [*]u8) callconv(.c) void;
 
 // Internal arch/ declarations

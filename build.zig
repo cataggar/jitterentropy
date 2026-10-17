@@ -8,13 +8,10 @@ const jitterentropy_version = std.SemanticVersion{
 
 const lib_c_sources: []const []const u8 = &.{
     "src/jitterentropy-base.c",
-    "src/jitterentropy-gcd.c",
     "src/jitterentropy-health.c",
     "src/jitterentropy-noise.c",
-    "src/jitterentropy-sha3.c",
     "src/jitterentropy-status.c",
     "src/jitterentropy-timer.c",
-    "src/jitterentropy-uuid.c",
     "arch/jitterentropy-arch-atomic.c",
     "arch/jitterentropy-arch-cache.c",
     "arch/jitterentropy-arch-fips.c",
@@ -27,15 +24,12 @@ const lib_c_sources: []const []const u8 = &.{
 };
 
 const unit_test_names: []const []const u8 = &.{
-    "unit-sha3",
-    "unit-gcd",
     "unit-arch-cache",
     "unit-arch-fips",
     "unit-arch-memory",
     "unit-arch-ncpu",
     "unit-arch-sched",
     "unit-arch-timer",
-    "unit-uuid",
     "unit-base-api",
     "unit-base-config",
     "unit-base-gen",
@@ -44,6 +38,12 @@ const unit_test_names: []const []const u8 = &.{
     "unit-notime",
     "unit-concurrency",
     "unit-zeroize",
+};
+
+const zig_unit_test_names: []const []const u8 = &.{
+    "unit_sha3",
+    "unit_gcd",
+    "unit_uuid",
 };
 
 const mock_unit_test_names: []const []const u8 = &.{
@@ -227,16 +227,16 @@ pub fn build(b: *std.Build) void {
         .coverage_rt_file = coverage_rt_file,
     };
 
-    if (enable_efi) {
-        addEfiTargets(b);
-    }
-
     const build_options = b.addOptions();
     build_options.addOption(bool, "internal_timer", internal_timer);
     build_options.addOption(bool, "mock_timer", mock_timer);
     build_options.addOption(bool, "raw_memory_access", raw_memory_access);
     build_options.addOption(bool, "stack_protector", stack_protector);
     build_options.addOption(std.builtin.LinkMode, "linkage", linkage);
+
+    if (enable_efi) {
+        addEfiTargets(b, build_options);
+    }
 
     const mock_build_options = b.addOptions();
     mock_build_options.addOption(bool, "internal_timer", internal_timer);
@@ -248,7 +248,10 @@ pub fn build(b: *std.Build) void {
     const os_tag = target.result.os.tag;
     const c_flags = getCFlags(b, target, opts, &.{}) catch @panic("OOM");
 
-    const zig_core_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
+    // The SHA-3 permutation and GCD self-test are timing-sensitive entropy
+    // measurements. Zig 0.16/0.17 have no per-function optimize-mode builtin,
+    // so every root module containing them is compiled in Debug mode.
+    const zig_core_mod = createCModule(b, target, .Debug, opts, if (os_tag == .windows) null else true);
     zig_core_mod.root_source_file = b.path("src/root.zig");
     zig_core_mod.addOptions("build_options", build_options);
     configureIncludePaths(b, zig_core_mod);
@@ -259,9 +262,38 @@ pub fn build(b: *std.Build) void {
         .root_module = zig_core_mod,
     });
 
+    const zig_lib_obj_mod = createCModule(b, target, .Debug, opts, if (os_tag == .windows) null else true);
+    zig_lib_obj_mod.root_source_file = b.path("src/root.zig");
+    zig_lib_obj_mod.addOptions("build_options", build_options);
+    configureIncludePaths(b, zig_lib_obj_mod);
+    configureCommonDefines(b, zig_lib_obj_mod, target, opts, linkage, true);
+    const zig_lib_obj = b.addObject(.{
+        .name = "jitterentropy-zig-ports",
+        .root_module = zig_lib_obj_mod,
+    });
+
+    const zig_gcd_mod = createCModule(b, target, .Debug, opts, if (os_tag == .windows) null else true);
+    zig_gcd_mod.root_source_file = b.path("src/gcd_root.zig");
+    zig_gcd_mod.addOptions("build_options", build_options);
+    configureIncludePaths(b, zig_gcd_mod);
+    configureCommonDefines(b, zig_gcd_mod, target, opts, .static, false);
+    const zig_gcd_lib = b.addLibrary(.{
+        .name = "jitterentropy-zig-gcd",
+        .linkage = .static,
+        .root_module = zig_gcd_mod,
+    });
+
+    const zig_test_api_mod = b.createModule(.{
+        .root_source_file = b.path("src/internal.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    zig_test_api_mod.addOptions("build_options", build_options);
+
     var mock_opts = opts;
     mock_opts.mock_timer = true;
-    const zig_core_mock_mod = createCModule(b, target, optimize, mock_opts, if (os_tag == .windows) null else true);
+    const zig_core_mock_mod = createCModule(b, target, .Debug, mock_opts, if (os_tag == .windows) null else true);
     zig_core_mock_mod.root_source_file = b.path("src/root.zig");
     zig_core_mock_mod.addOptions("build_options", mock_build_options);
     configureIncludePaths(b, zig_core_mock_mod);
@@ -273,8 +305,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const lib_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
-    lib_mod.root_source_file = b.path("src/root.zig");
-    lib_mod.addOptions("build_options", build_options);
+    lib_mod.addObject(zig_lib_obj);
     configureIncludePaths(b, lib_mod);
     configureCommonDefines(b, lib_mod, target, opts, linkage, true);
     configureSystemLibraries(lib_mod, target, opts);
@@ -335,8 +366,7 @@ pub fn build(b: *std.Build) void {
 
     if (enable_recording) {
         const rec_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
-        rec_mod.root_source_file = b.path("src/root.zig");
-        rec_mod.addOptions("build_options", build_options);
+        rec_mod.addObject(zig_lib_obj);
         configureIncludePaths(b, rec_mod);
         rec_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
         configureCommonDefines(b, rec_mod, target, opts, linkage, false);
@@ -518,15 +548,27 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_rngd_ver.step);
     }
 
-    const gcd_exe = addAbsorbingExecutable(b, "gcd", target, optimize, opts, zig_core_lib, c_flags, &.{
-        "tests/gcd/gcd.c",
-        "src/jitterentropy-gcd.c",
-        "arch/jitterentropy-arch-memory.c",
-        "arch/jitterentropy-arch-atomic.c",
-    }, false, false);
+    const gcd_mod = createCModule(b, target, optimize, opts, null);
+    gcd_mod.root_source_file = b.path("tests/gcd/gcd.zig");
+    gcd_mod.addImport("jent", zig_test_api_mod);
+    gcd_mod.linkLibrary(zig_gcd_lib);
+    configureIncludePaths(b, gcd_mod);
+    configureCommonDefines(b, gcd_mod, target, opts, .static, false);
+    gcd_mod.addCMacro("JENT_STATIC_LIB", "1");
+    gcd_mod.addCSourceFiles(.{
+        .files = &.{
+            "arch/jitterentropy-arch-memory.c",
+            "arch/jitterentropy-arch-atomic.c",
+        },
+        .flags = c_flags,
+    });
+    const gcd_exe = b.addExecutable(.{
+        .name = "gcd",
+        .root_module = gcd_mod,
+    });
     configureCryptoLibraries(gcd_exe.root_module, opts);
 
-    const health_exe = addAbsorbingExecutable(b, "jitterentropy-health", target, optimize, opts, zig_core_lib, c_flags, &.{
+    const health_exe = addAbsorbingExecutable(b, "jitterentropy-health", target, optimize, opts, null, c_flags, &.{
         "tests/health/health.c",
         "src/jitterentropy-health.c",
         "arch/jitterentropy-arch-atomic.c",
@@ -1005,7 +1047,7 @@ pub fn build(b: *std.Build) void {
     const zig_test_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
-        .optimize = optimize,
+        .optimize = .Debug,
         .link_libc = true,
     });
     zig_test_mod.addOptions("build_options", build_options);
@@ -1048,6 +1090,21 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_ut.step);
     }
 
+    for (zig_unit_test_names) |ut_name| {
+        const ut_exe = addZigUnitTestExecutable(
+            b,
+            ut_name,
+            target,
+            optimize,
+            opts,
+            zig_core_lib,
+            zig_test_api_mod,
+            c_flags,
+        );
+        const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
+        test_step.dependOn(&run_ut.step);
+    }
+
     if (os_tag == .linux) {
         const ut_kern = addUnitTestExecutable(b, "unit-kernel-lib", target, optimize, opts, null, c_flags, false);
         const run_ut_kern = addSkipAwareTestRun(b, test_runner_exe, ut_kern, tsan_options);
@@ -1082,7 +1139,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_fuzz_api.step);
 
     const fuzz_health_mod = createCModule(b, target, optimize, opts, null);
-    fuzz_health_mod.linkLibrary(zig_core_lib);
     configureIncludePaths(b, fuzz_health_mod);
     configureCommonDefines(b, fuzz_health_mod, target, opts, .static, false);
     fuzz_health_mod.addCMacro("JENT_FUZZ_STANDALONE", "1");
@@ -1134,7 +1190,6 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_fuzz_api_fuzzer.step);
 
         const fuzz_health_fuzzer_mod = createCModule(b, target, optimize, opts, null);
-        fuzz_health_fuzzer_mod.linkLibrary(zig_core_lib);
         configureIncludePaths(b, fuzz_health_fuzzer_mod);
         configureCommonDefines(b, fuzz_health_fuzzer_mod, target, opts, .static, false);
         fuzz_health_fuzzer_mod.addCSourceFiles(.{
@@ -1413,14 +1468,14 @@ fn addAbsorbingExecutable(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     opts: BuildOptions,
-    zig_core_lib: *std.Build.Step.Compile,
+    zig_core_lib: ?*std.Build.Step.Compile,
     c_flags: []const []const u8,
     files: []const []const u8,
     needs_system_libs: bool,
     needs_libm: bool,
 ) *std.Build.Step.Compile {
     const mod = createCModule(b, target, optimize, opts, null);
-    mod.linkLibrary(zig_core_lib);
+    if (zig_core_lib) |core_lib| mod.linkLibrary(core_lib);
     configureIncludePaths(b, mod);
     mod.addIncludePath(b.path("tests"));
     configureCommonDefines(b, mod, target, opts, .static, false);
@@ -1544,6 +1599,7 @@ fn addUnitTestExecutable(
         mod.linkLibrary(core_lib);
         addLibrarySourcesExcluding(b, mod, c_flags, excludedSourcesForUnitTest(name));
     }
+
     configureIncludePaths(b, mod);
     mod.addIncludePath(b.path("tests"));
     configureCommonDefines(b, mod, target, opts, .static, false);
@@ -1559,6 +1615,34 @@ fn addUnitTestExecutable(
     });
     return b.addExecutable(.{
         .name = name,
+        .root_module = mod,
+    });
+}
+
+fn addZigUnitTestExecutable(
+    b: *std.Build,
+    name: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    opts: BuildOptions,
+    zig_core_lib: *std.Build.Step.Compile,
+    zig_test_api_mod: *std.Build.Module,
+    c_flags: []const []const u8,
+) *std.Build.Step.Compile {
+    const mod = createCModule(b, target, optimize, opts, null);
+    const src_rel = std.fmt.allocPrint(b.allocator, "tests/unit/{s}.zig", .{name}) catch @panic("OOM");
+    mod.root_source_file = b.path(src_rel);
+    mod.addImport("jent", zig_test_api_mod);
+    mod.linkLibrary(zig_core_lib);
+    addLibrarySourcesExcluding(b, mod, c_flags, &.{});
+    configureIncludePaths(b, mod);
+    mod.addIncludePath(b.path("tests"));
+    configureCommonDefines(b, mod, target, opts, .static, false);
+    mod.addCMacro("JENT_STATIC_LIB", "1");
+    configureSystemLibraries(mod, target, opts);
+    const exe_name = std.mem.replaceOwned(u8, b.allocator, name, "_", "-") catch @panic("OOM");
+    return b.addExecutable(.{
+        .name = exe_name,
         .root_module = mod,
     });
 }
@@ -1751,7 +1835,7 @@ fn verifyLinktestCalls(
     }
 }
 
-fn addEfiTargets(b: *std.Build) void {
+fn addEfiTargets(b: *std.Build, build_options: *std.Build.Step.Options) void {
     const wf = b.addWriteFiles();
     _ = wf.add("include/efi.h", efi_h_source);
     _ = wf.add("include/efilib.h", efilib_h_source);
@@ -1811,6 +1895,23 @@ fn addEfiTargets(b: *std.Build) void {
         efi_flags_list.appendSlice(b.allocator, spec.extra_flags) catch @panic("OOM");
         const efi_flags = efi_flags_list.toOwnedSlice(b.allocator) catch @panic("OOM");
 
+        const efi_core_mod = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = uefi_target,
+            .optimize = .Debug,
+            .link_libc = false,
+            .pic = true,
+            .red_zone = if (spec.arch == .x86_64) false else null,
+            .stack_check = false,
+            .stack_protector = false,
+        });
+        efi_core_mod.addOptions("build_options", build_options);
+        const efi_core_lib = b.addLibrary(.{
+            .name = b.fmt("jitterentropy-zig-core-{s}", .{spec.boot_name}),
+            .linkage = .static,
+            .root_module = efi_core_mod,
+        });
+
         const efi_mod = b.createModule(.{
             .target = uefi_target,
             .optimize = .Debug,
@@ -1820,6 +1921,7 @@ fn addEfiTargets(b: *std.Build) void {
             .stack_check = false,
             .stack_protector = false,
         });
+        efi_mod.linkLibrary(efi_core_lib);
         efi_mod.addIncludePath(efi_inc_dir);
         configureIncludePaths(b, efi_mod);
         efi_mod.addCMacro("JENT_CONF_ENABLE_INTERNAL_TIMER", "1");

@@ -123,9 +123,10 @@ jobs:
           ctest --test-dir build --output-on-failure -LE unreliable
           ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 > /dev/null
 
-  # acvpparser's jent backend, the CAVP test harness of the conditioner,
-  # #includes src/jitterentropy-sha3.c and builds it with -Werror. Unpinned:
-  # the current parser is the one that has to keep working.
+  # acvpparser's jent backend, the CAVP test harness of the conditioner.
+  # Its current backend still includes the former C implementation directly,
+  # so the job patches that include to the retained ABI header and links the
+  # Zig-built static library. Unpinned: the current parser must keep working.
   linux-acvp-parser:
     name: ACVP parser
     runs-on: ubuntu-latest
@@ -137,19 +138,20 @@ jobs:
           repository: smuellerDD/acvpparser
           path: acvpparser
 
+      - uses: mlugg/setup-zig@v2
+
       - name: Show the acvpparser revision
         run: git -C acvpparser log -1 --format='%H %cd %s'
 
       - name: Build the library
-        run: |
-          cmake -S . -B build -DBUILD_SHARED_LIBS=OFF
-          cmake --build build -j "$(nproc)" --target jitterentropy
+        run: zig build -Dlinkage=static -Doptimize=ReleaseFast -Dtools=false
 
-      # The archive supplies jent_memset_secure(), which sha3.c calls. LDFLAGS
-      # from the environment, as acvpparser's Makefile appends to it.
       - name: Build acvpparser against this tree
         run: |
-          LDFLAGS="$PWD/build/libjitterentropy.a" \
+          sed -i \
+            's|#include "jitterentropy-sha3.c"|#include "jitterentropy-sha3.h"|' \
+            acvpparser/backends/backend_jent.c
+          LDFLAGS="$PWD/zig-out/lib/libjitterentropy.a" \
             make -C acvpparser jent JENT_SRC="$PWD" -j "$(nproc)"
 
       - name: Check its digests against hashlib
