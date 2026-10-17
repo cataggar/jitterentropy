@@ -1,6 +1,6 @@
-# ThreadSanitizer suppressions for the test suite of a -Dtsan=true build.
-# build.zig points TSAN_OPTIONS at this file for every test run, so a plain
-# `zig build -Dtsan=true test` uses it without being told to.
+# ThreadSanitizer suppressions for the CTest suite of a -DENABLE_THREAD_SANITIZER=ON
+# build. CMake points TSAN_OPTIONS at this file for every registered test, so a
+# plain `ctest --test-dir <build>` uses it without being told to.
 #
 # There is exactly one thing suppressed here, and it is a data race the library
 # is built around rather than one it has yet to answer.
@@ -18,8 +18,8 @@
 # seeing it late is one more turn of a loop that is already unbounded.
 #
 # Everything else the library shares between threads is a latch or a memo and
-# goes through arch/jitterentropy-arch-atomic.h. Those are not suppressed, and
-# tests/unit/unit-concurrency.c exists to race them: a report from it is a
+# goes through src/arch/atomic.zig. Those are not suppressed, and
+# tests/unit/unit_concurrency.zig exists to race them: a report from it is a
 # regression, which is the whole point of keeping this list to the two entries
 # below.
 race:jent_notime_sample_timer
