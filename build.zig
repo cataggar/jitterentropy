@@ -389,10 +389,25 @@ pub fn build(b: *std.Build) void {
         false,
     );
 
+    const cpuinfo_mod = b.createModule(.{
+        .root_source_file = b.path("tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    if (os_tag == .windows) {
+        cpuinfo_mod.linkSystemLibrary("advapi32", .{});
+    }
+    const cpuinfo_exe = b.addExecutable(.{
+        .name = "jitterentropy-cpuinfo",
+        .root_module = cpuinfo_mod,
+    });
+
     if (enable_tools) {
         b.installArtifact(gcd_exe);
         b.installArtifact(health_exe);
         b.installArtifact(flags_exe);
+        b.installArtifact(cpuinfo_exe);
 
         const rng_exe = addToolExecutable(
             b,
@@ -449,23 +464,6 @@ pub fn build(b: *std.Build) void {
             const dest_page = std.fmt.allocPrint(b.allocator, "share/man/man1/{s}", .{page}) catch @panic("OOM");
             b.installFile(src_page, dest_page);
         }
-
-        const cpuinfo_exe = addToolExecutable(
-            b,
-            "jitterentropy-cpuinfo",
-            "tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo.c",
-            target,
-            optimize,
-            opts,
-            linkage,
-            c_flags,
-            null,
-            false,
-        );
-        if (os_tag == .windows) {
-            cpuinfo_exe.root_module.linkSystemLibrary("advapi32", .{});
-        }
-        b.installArtifact(cpuinfo_exe);
 
         const extractlsb_exe = addToolExecutable(
             b,
@@ -578,6 +576,40 @@ pub fn build(b: *std.Build) void {
     run_flags_mixed.addArg("JeNt_NtG1");
     run_flags_mixed.expectStdOutEqual("64\n");
     test_step.dependOn(&run_flags_mixed.step);
+
+    const cpuinfo_unit_mod = b.createModule(.{
+        .root_source_file = b.path("tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    if (os_tag == .windows) {
+        cpuinfo_unit_mod.linkSystemLibrary("advapi32", .{});
+    }
+    const cpuinfo_unit_tests = b.addTest(.{
+        .root_module = cpuinfo_unit_mod,
+    });
+    const run_cpuinfo_unit_tests = b.addRunArtifact(cpuinfo_unit_tests);
+    test_step.dependOn(&run_cpuinfo_unit_tests.step);
+
+    const run_cpuinfo = b.addRunArtifact(cpuinfo_exe);
+    run_cpuinfo.expectExitCode(0);
+    test_step.dependOn(&run_cpuinfo.step);
+
+    const run_cpuinfo_summary = b.addRunArtifact(cpuinfo_exe);
+    run_cpuinfo_summary.addArg("--summary");
+    run_cpuinfo_summary.expectExitCode(0);
+    test_step.dependOn(&run_cpuinfo_summary.step);
+
+    const run_cpuinfo_json = b.addRunArtifact(cpuinfo_exe);
+    run_cpuinfo_json.addArg("--json");
+    run_cpuinfo_json.expectExitCode(0);
+    test_step.dependOn(&run_cpuinfo_json.step);
+
+    const run_cpuinfo_help = b.addRunArtifact(cpuinfo_exe);
+    run_cpuinfo_help.addArg("--help");
+    run_cpuinfo_help.expectExitCode(0);
+    test_step.dependOn(&run_cpuinfo_help.step);
 
     const FlagsFailCase = struct {
         args: []const []const u8,
