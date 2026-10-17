@@ -1,6 +1,36 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
 pub const build_options = internal.build_options;
+pub const timer = @import("timer.zig");
+pub const noise = @import("noise.zig");
+
+comptime {
+    _ = timer.jent_notime_init;
+    _ = timer.jent_notime_fini;
+    _ = timer.jent_notime_thread_builtin;
+    _ = timer.jent_notime_block_switch;
+    _ = timer.jent_notime_set_cpu;
+    _ = timer.jent_notime_sample_timer;
+    _ = timer.jent_notime_settick;
+    _ = timer.jent_notime_unsettick;
+    _ = timer.jent_get_nstime_internal;
+    _ = timer.jent_notime_disable;
+    _ = timer.jent_notime_enable;
+    _ = timer.jent_notime_switch;
+    _ = timer.jent_notime_force;
+    _ = timer.jent_notime_forced;
+    _ = timer.jent_entropy_switch_notime_impl;
+    _ = timer.jent_entropy_set_notime_cpu;
+
+    _ = noise.jent_memaccess_pseudorandom;
+    _ = noise.jent_memaccess_deterministic;
+    _ = noise.jent_measure_jitter_ntg1_memaccess;
+    _ = noise.jent_measure_jitter_ntg1_sha3;
+    _ = noise.jent_measure_jitter;
+    _ = noise.jent_random_data_one;
+    _ = noise.jent_random_data;
+    _ = noise.jent_read_random_block;
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +178,6 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(timer);
+    std.testing.refAllDecls(noise);
 }

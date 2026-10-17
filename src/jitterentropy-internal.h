@@ -71,8 +71,8 @@
  */
 #include <linux/math64.h>	/* div64_u64(), div64_u64_rem() */
 /*
- * memcpy()/memset() are used by the core itself (jitterentropy-base.c,
- * jitterentropy-noise.c, jitterentropy-sha3.c). They used to arrive here by
+ * memcpy()/memset() are used by the C core itself (jitterentropy-base.c and
+ * jitterentropy-sha3.c). They used to arrive here by
  * accident, dragged in behind <linux/timex.h> via the arch timer header; that
  * header now lives in arch/jitterentropy-arch-timer.c and the core no longer
  * sees it, so the dependency is stated where it is actually used. <linux/

@@ -528,8 +528,8 @@ long jent_ncpu(void)
 	/*
 	 * The CPUs the kernel has started. The builtin timer thread has no
 	 * backend here (see jitterentropy-arch-thread.c) and is refused
-	 * regardless of this count (jent_notime_init_flags() in
-	 * jitterentropy-timer.c), and a handler registered through
+	 * regardless of this count (jent_notime_init_flags() in timer.zig),
+	 * and a handler registered through
 	 * jent_entropy_switch_notime_impl() brings its own CPU rule, so the
 	 * count only feeds the cpuCores field of jent_status().
 	 */

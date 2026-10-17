@@ -105,7 +105,7 @@ jobs:
               echo "::warning::jitterentropy-rng $opt failed on this machine"
           done
 
-  # The only job building the stub half of jitterentropy-timer.c.
+  # The only job building the stub half of timer.zig.
   linux-no-internal-timer:
     name: without internal timer
     runs-on: ubuntu-latest

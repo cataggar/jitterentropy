@@ -209,6 +209,7 @@ pub const JENT_GCD_CLOCK_NOTIME: c_uint = 1;
 pub const JENT_GCD_CLOCKS: usize = 2;
 
 pub const JENT_NCPU_SET_MAX: c_uint = 1 << 16;
+pub const enable_random_memaccess = !build_options.raw_memory_access;
 
 // ============================================================================
 // Inline Helpers (src/jitterentropy-internal.h, sha3.h, health.h, gcd.h)
@@ -576,6 +577,7 @@ pub const rand_data = RandData(build_options.internal_timer);
 
 pub const jent_fips_failure_cb = ?*const fn (?*rand_data, c_uint) callconv(.c) void;
 pub const jent_mock_timer_cb = ?*const fn (?*anyopaque, *u64) callconv(.c) void;
+pub const jent_measure_jitter_cb = *const fn (*rand_data, u64, ?*u64, c_int) callconv(.c) c_uint;
 
 // ============================================================================
 // Extern C Declarations for Incremental C/Zig Interop
@@ -585,6 +587,7 @@ pub const jent_mock_timer_cb = ?*const fn (?*anyopaque, *u64) callconv(.c) void;
 pub extern fn jent_read_entropy(ec: ?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
 pub extern fn jent_read_entropy_safe(ec: ?*?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
 pub extern fn jent_entropy_collector_alloc(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
+pub extern fn jent_entropy_collector_alloc_internal(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
 pub extern fn jent_entropy_collector_free(entropy_collector: ?*rand_data) callconv(.c) void;
 pub extern fn jent_entropy_init() callconv(.c) c_int;
 pub extern fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) callconv(.c) c_int;
@@ -640,9 +643,11 @@ pub extern fn jent_health_failure_query(ec: *const rand_data) callconv(.c) c_uin
 pub extern fn jent_health_failure(ec: *rand_data) callconv(.c) c_uint;
 pub extern fn jent_health_init(ec: *rand_data, inittype: jent_health_init_type) callconv(.c) c_int;
 
+pub extern fn jent_get_nstime_internal(ec: *rand_data, out: *u64) callconv(.c) void;
 pub extern fn jent_measure_jitter_ntg1_memaccess(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
 pub extern fn jent_measure_jitter_ntg1_sha3(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
 pub extern fn jent_measure_jitter(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
+pub extern fn jent_random_data_one(ec: *rand_data, measure_jitter: jent_measure_jitter_cb) callconv(.c) void;
 pub extern fn jent_random_data(ec: *rand_data) callconv(.c) void;
 pub extern fn jent_read_random_block(ec: *rand_data, dst: [*]u8, dst_len: usize) callconv(.c) void;
 
@@ -670,12 +675,16 @@ pub extern fn jent_memory_backend_name() callconv(.c) [*:0]const u8;
 
 pub extern fn jent_ncpu() callconv(.c) c_long;
 pub extern fn jent_cpu_highest() callconv(.c) c_long;
+pub extern fn jent_thread_pin_to_cpu(cpu: c_ulong) callconv(.c) c_int;
+pub extern fn jent_notime_thread_create(ctx: *jent_notime_ctx, routine: jent_notime_start_routine, arg: ?*anyopaque) callconv(.c) c_int;
+pub extern fn jent_notime_thread_join(ctx: *jent_notime_ctx) callconv(.c) void;
 
 pub extern fn jent_os_random_bytes(buf: [*]u8, len: usize) callconv(.c) c_int;
 pub extern fn jent_os_random_supported() callconv(.c) c_int;
 
 pub extern fn jent_yield() callconv(.c) void;
 pub extern fn jent_get_nstime(out: *u64) callconv(.c) void;
+pub extern fn jent_set_mock_timer(cb: jent_mock_timer_cb, arg: ?*anyopaque) callconv(.c) c_int;
 
 // ============================================================================
 // Unit Tests: Constants, Inline Helpers, and C-ABI Struct & Bitfield Layout
