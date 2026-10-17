@@ -363,7 +363,7 @@ extern "C" {
  *
  * A core with no atomic instructions at all - ARMv6-M, RISC-V without the A
  * extension - is not supported: the library requires lock-free 32-bit atomics,
- * and arch/jitterentropy-arch-atomic.c fails to compile without them.
+ * and src/arch/atomic.zig fails to compile without them.
  *
  * The time stamp is read from a counter instruction on x86, aarch64, PowerPC,
  * s390x, SPARC64, RISC-V and LoongArch (arch/jitterentropy-arch-timer.c). Any

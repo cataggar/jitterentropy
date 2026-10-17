@@ -42,44 +42,16 @@
 /*
  * Architecture / OS-specific scheduler yield.
  *
- * Provides jent_yield() which combines a CPU-level pause hint (to ease
- * SMT and power contention while the caller is busy-waiting) with an
- * OS-level scheduler yield. The two phases are dispatched independently.
- *
- * CPU pause hint:
- *   - x86 / x86_64           -> _mm_pause() intrinsic ('pause' inline asm
- *                               in the FreeBSD kernel)
- *   - Windows on ARM / ARM64 -> __yield() intrinsic
- *   - aarch64                -> 'yield' instruction
- *   - arm (ARMv7+)           -> 'yield' instruction
- *   - powerpc                -> 'or 27,27,27' (low-priority hint)
- *   - riscv                  -> Zihintpause 'pause', emitted as its raw
- *                               encoding (a no-op on older cores)
- *   - Linux kernel           -> no hint (schedule() below is the yield)
- *   - other (s390x, unknown) -> no hint
- *
- * OS yield:
- *   - Windows (MSVC / MinGW)             -> SwitchToThread()
- *   - hosted Unix-like (Linux, BSDs,     -> sched_yield()
- *     Apple, AIX, Solaris/illumos,
- *     Haiku, Cygwin)
- *   - Linux kernel                       -> schedule()
- *   - FreeBSD kernel                     -> kern_yield(PRI_USER)
- *   - other (e.g. baremetal)             -> no-op
- *
- * The CPU hint mirrors what YieldProcessor() does on Windows (which
- * expands to the architecture's pause/yield instruction). On baremetal
- * targets with no scheduler we still emit the CPU hint so a busy-wait
- * loop does not pin SMT siblings unnecessarily.
+ * Provides jent_yield(), implemented in src/arch/sched.zig. Windows uses
+ * SwitchToThread(), hosted POSIX systems use sched_yield(), and freestanding
+ * or UEFI targets have no scheduler and therefore do nothing.
  */
 
 #ifndef _JITTERENTROPY_ARCH_SCHED_H
 #define _JITTERENTROPY_ARCH_SCHED_H
 
 /*
- * Combine a CPU-level pause hint (to ease SMT and power contention while the
- * caller is busy-waiting) with an OS-level scheduler yield. Defined in
- * arch/jitterentropy-arch-sched.c.
+ * Yield the calling thread to the platform scheduler when one is available.
  */
 JENT_INTERNAL
 void jent_yield(void);

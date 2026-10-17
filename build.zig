@@ -15,13 +15,10 @@ const lib_c_sources: []const []const u8 = &.{
     "src/jitterentropy-status.c",
     "src/jitterentropy-timer.c",
     "src/jitterentropy-uuid.c",
-    "arch/jitterentropy-arch-atomic.c",
     "arch/jitterentropy-arch-cache.c",
-    "arch/jitterentropy-arch-fips.c",
     "arch/jitterentropy-arch-memory.c",
     "arch/jitterentropy-arch-ncpu.c",
     "arch/jitterentropy-arch-random.c",
-    "arch/jitterentropy-arch-sched.c",
     "arch/jitterentropy-arch-thread.c",
     "arch/jitterentropy-arch-timer.c",
 };
@@ -30,10 +27,8 @@ const unit_test_names: []const []const u8 = &.{
     "unit-sha3",
     "unit-gcd",
     "unit-arch-cache",
-    "unit-arch-fips",
     "unit-arch-memory",
     "unit-arch-ncpu",
-    "unit-arch-sched",
     "unit-arch-timer",
     "unit-uuid",
     "unit-base-api",
@@ -522,14 +517,12 @@ pub fn build(b: *std.Build) void {
         "tests/gcd/gcd.c",
         "src/jitterentropy-gcd.c",
         "arch/jitterentropy-arch-memory.c",
-        "arch/jitterentropy-arch-atomic.c",
     }, false, false);
     configureCryptoLibraries(gcd_exe.root_module, opts);
 
     const health_exe = addAbsorbingExecutable(b, "jitterentropy-health", target, optimize, opts, zig_core_lib, c_flags, &.{
         "tests/health/health.c",
         "src/jitterentropy-health.c",
-        "arch/jitterentropy-arch-atomic.c",
     }, false, false);
 
     const flags_exe = addToolExecutable(
@@ -1048,6 +1041,23 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_ut.step);
     }
 
+    const zig_arch_unit_tests = [_]struct { name: []const u8, source: []const u8 }{
+        .{ .name = "unit-arch-sched", .source = "tests/unit/unit_arch_sched.zig" },
+        .{ .name = "unit-arch-fips", .source = "tests/unit/unit_arch_fips.zig" },
+    };
+    for (zig_arch_unit_tests) |ut| {
+        const ut_exe = addZigUnitTestExecutable(
+            b,
+            ut.name,
+            ut.source,
+            target,
+            optimize,
+            zig_core_lib,
+        );
+        const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
+        test_step.dependOn(&run_ut.step);
+    }
+
     if (os_tag == .linux) {
         const ut_kern = addUnitTestExecutable(b, "unit-kernel-lib", target, optimize, opts, null, c_flags, false);
         const run_ut_kern = addSkipAwareTestRun(b, test_runner_exe, ut_kern, tsan_options);
@@ -1090,7 +1100,6 @@ pub fn build(b: *std.Build) void {
         .files = &.{
             "tests/fuzz/fuzz-health.c",
             "src/jitterentropy-health.c",
-            "arch/jitterentropy-arch-atomic.c",
         },
         .flags = c_flags,
     });
@@ -1141,7 +1150,6 @@ pub fn build(b: *std.Build) void {
             .files = &.{
                 "tests/fuzz/fuzz-health.c",
                 "src/jitterentropy-health.c",
-                "arch/jitterentropy-arch-atomic.c",
             },
             .flags = c_flags,
         });
@@ -1491,7 +1499,6 @@ fn excludedSourcesForUnitTest(name: []const u8) []const []const u8 {
             "arch/jitterentropy-arch-thread.c",
             "arch/jitterentropy-arch-timer.c",
             "arch/jitterentropy-arch-cache.c",
-            "arch/jitterentropy-arch-fips.c",
             "arch/jitterentropy-arch-random.c",
         };
     }
@@ -1557,6 +1564,27 @@ fn addUnitTestExecutable(
         .file = b.path(src_rel),
         .flags = c_flags,
     });
+    return b.addExecutable(.{
+        .name = name,
+        .root_module = mod,
+    });
+}
+
+fn addZigUnitTestExecutable(
+    b: *std.Build,
+    name: []const u8,
+    source: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    zig_core_lib: *std.Build.Step.Compile,
+) *std.Build.Step.Compile {
+    const mod = b.createModule(.{
+        .root_source_file = b.path(source),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    mod.linkLibrary(zig_core_lib);
     return b.addExecutable(.{
         .name = name,
         .root_module = mod,
@@ -1766,6 +1794,12 @@ fn addEfiTargets(b: *std.Build) void {
     _ = wf.add("include/stdio.h", efi_stdio_h_source);
     const efi_support_c = wf.add("efi_support.c", efi_support_c_source);
     const efi_inc_dir = wf.getDirectory().path(b, "include");
+    const efi_build_options = b.addOptions();
+    efi_build_options.addOption(bool, "internal_timer", true);
+    efi_build_options.addOption(bool, "mock_timer", false);
+    efi_build_options.addOption(bool, "raw_memory_access", false);
+    efi_build_options.addOption(bool, "stack_protector", false);
+    efi_build_options.addOption(std.builtin.LinkMode, "linkage", .static);
 
     const EfiTargetSpec = struct {
         arch: std.Target.Cpu.Arch,
@@ -1811,6 +1845,23 @@ fn addEfiTargets(b: *std.Build) void {
         efi_flags_list.appendSlice(b.allocator, spec.extra_flags) catch @panic("OOM");
         const efi_flags = efi_flags_list.toOwnedSlice(b.allocator) catch @panic("OOM");
 
+        const efi_core_mod = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = uefi_target,
+            .optimize = .Debug,
+            .link_libc = false,
+            .pic = true,
+            .red_zone = if (spec.arch == .x86_64) false else null,
+            .stack_check = false,
+            .stack_protector = false,
+        });
+        efi_core_mod.addOptions("build_options", efi_build_options);
+        const efi_core_lib = b.addLibrary(.{
+            .name = b.fmt("jitterentropy-zig-core-{s}", .{@tagName(spec.arch)}),
+            .linkage = .static,
+            .root_module = efi_core_mod,
+        });
+
         const efi_mod = b.createModule(.{
             .target = uefi_target,
             .optimize = .Debug,
@@ -1820,6 +1871,7 @@ fn addEfiTargets(b: *std.Build) void {
             .stack_check = false,
             .stack_protector = false,
         });
+        efi_mod.linkLibrary(efi_core_lib);
         efi_mod.addIncludePath(efi_inc_dir);
         configureIncludePaths(b, efi_mod);
         efi_mod.addCMacro("JENT_CONF_ENABLE_INTERNAL_TIMER", "1");

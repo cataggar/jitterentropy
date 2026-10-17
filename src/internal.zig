@@ -651,15 +651,22 @@ pub extern fn jent_uuid_generate(out: [*]u8) callconv(.c) void;
 // Internal arch/ declarations
 pub extern fn jent_atomic_load_int(ptr: *const c_int) callconv(.c) c_int;
 pub extern fn jent_atomic_store_int(ptr: *c_int, val: c_int) callconv(.c) void;
+pub extern fn jent_atomic_exchange_int(ptr: *c_int, val: c_int) callconv(.c) c_int;
 pub extern fn jent_atomic_load_u32(ptr: *const u32) callconv(.c) u32;
 pub extern fn jent_atomic_inc_u32(ptr: *u32) callconv(.c) u32;
 pub extern fn jent_atomic_cmpxchg_u32(ptr: *u32, old: u32, val: u32) callconv(.c) u32;
 pub extern fn jent_atomic_store_u32(ptr: *u32, val: u32) callconv(.c) void;
+pub extern fn jent_atomic_load_u64(ptr: *const u64) callconv(.c) u64;
+pub extern fn jent_atomic_store_u64(ptr: *u64, val: u64) callconv(.c) void;
+pub extern fn jent_atomic_load_ptr(ptr: *const ?*anyopaque) callconv(.c) ?*anyopaque;
+pub extern fn jent_atomic_store_ptr(ptr: *?*anyopaque, val: ?*anyopaque) callconv(.c) void;
+pub extern fn jent_atomic_cas_ptr(ptr: *?*anyopaque, old: ?*anyopaque, val: ?*anyopaque) callconv(.c) ?*anyopaque;
 pub extern fn jent_atomic_load_fips_cb(ptr: *const jent_fips_failure_cb) callconv(.c) jent_fips_failure_cb;
 pub extern fn jent_atomic_store_fips_cb(ptr: *jent_fips_failure_cb, val: jent_fips_failure_cb) callconv(.c) void;
 
 pub extern fn jent_cache_size_roundup(all_caches: c_int) callconv(.c) u64;
 pub extern fn jent_fips_enabled() callconv(.c) c_int;
+pub extern fn jent_fi_real_fips_enabled() callconv(.c) c_int;
 
 pub extern fn jent_memset_secure(s: ?*anyopaque, n: usize) callconv(.c) void;
 pub extern fn jent_zalloc(len: usize, flags: c_uint) callconv(.c) ?*anyopaque;

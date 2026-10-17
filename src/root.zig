@@ -145,6 +145,12 @@ pub const jent_health_init_type = internal.jent_health_init_type;
 pub const jent_sha_ctx = internal.jent_sha_ctx;
 pub const rand_data = internal.rand_data;
 
+comptime {
+    _ = @import("arch/atomic.zig");
+    _ = @import("arch/sched.zig");
+    _ = @import("arch/fips.zig");
+}
+
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);

@@ -363,7 +363,8 @@ static ssize_t fi_getrandom(void *buf, size_t len, unsigned int flags)
  * The kernel FIPS indicator. Whether the machine has it on decides two
  * branches in the collector setup, and it is not something a test can turn on.
  */
-static int fi_force_fips_enabled;
+extern int jent_fi_force_fips_enabled;
+#define fi_force_fips_enabled jent_fi_force_fips_enabled
 
 /*
  * The CPU-set allocation the affinity query needs. CPU_ALLOC is a macro over
@@ -507,20 +508,6 @@ int jent_notime_thread_create(struct jent_notime_ctx *ctx,
 int jent_fips_enabled(void);
 
 #include "jitterentropy-arch-cache.c"
-/*
- * The rename is scoped to this one include: the sources above call
- * jent_fips_enabled() and must reach the override below, not the real one.
- */
-#define jent_fips_enabled jent_fi_real_fips_enabled
-#include "jitterentropy-arch-fips.c"
-#undef jent_fips_enabled
-
-int jent_fips_enabled(void)
-{
-	if (fi_force_fips_enabled)
-		return 1;
-	return jent_fi_real_fips_enabled();
-}
 #include "jitterentropy-arch-random.c"
 
 #ifndef FI_WINDOWS

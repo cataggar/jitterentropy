@@ -54,7 +54,8 @@
  * model all the same: the compiler is entitled to reload, to widen a store, or
  * to hoist a read out of a branch, and a thread sanitizer reports every one of
  * them, which buries whatever real finding a run has. Accessing them through
- * these helpers states what they are instead.
+ * these helpers states what they are instead. The Zig implementation in
+ * src/arch/atomic.zig uses sequentially consistent ordering throughout.
  *
  */
 
@@ -65,6 +66,8 @@ JENT_INTERNAL
 int jent_atomic_load_int(const int *ptr);
 JENT_INTERNAL
 void jent_atomic_store_int(int *ptr, int val);
+JENT_INTERNAL
+int jent_atomic_exchange_int(int *ptr, int val);
 
 JENT_INTERNAL
 uint32_t jent_atomic_load_u32(const uint32_t *ptr);
@@ -75,6 +78,19 @@ JENT_INTERNAL
 uint32_t jent_atomic_cmpxchg_u32(uint32_t *ptr, uint32_t old, uint32_t val);
 JENT_INTERNAL
 void jent_atomic_store_u32(uint32_t *ptr, uint32_t val);
+
+JENT_INTERNAL
+uint64_t jent_atomic_load_u64(const uint64_t *ptr);
+JENT_INTERNAL
+void jent_atomic_store_u64(uint64_t *ptr, uint64_t val);
+
+JENT_INTERNAL
+void *jent_atomic_load_ptr(void *const *ptr);
+JENT_INTERNAL
+void jent_atomic_store_ptr(void **ptr, void *val);
+/* Store val if *ptr is old; returns what *ptr held, old on success. */
+JENT_INTERNAL
+void *jent_atomic_cas_ptr(void **ptr, void *old, void *val);
 
 JENT_INTERNAL
 jent_fips_failure_cb

@@ -40,20 +40,12 @@
  */
 
 /*
- * Crypto-library / OS-specific FIPS-mode detection.
+ * OS-specific FIPS-mode detection.
  *
  * Provides jent_fips_enabled() returning non-zero when the runtime is in
- * FIPS mode and zero otherwise. Dispatch:
- *   - LIBGCRYPT  -> gcry_fips_mode_active()
- *   - AWSLC      -> FIPS_mode()
- *   - OPENSSL    -> EVP_default_properties_is_fips_enabled(NULL)
- *   - Windows    -> BCryptGetFipsAlgorithmMode(), the system FIPS policy
- *   - POSIX      -> read /proc/sys/crypto/fips_enabled (Linux); on systems
- *                   that lack the file the open() fails and we report 0.
- *   - Linux Kernel -> fips_enabled flag
- *
- * The crypto-library branches expect the consumer to have included the
- * relevant headers before this one (gcrypt.h / openssl/evp.h).
+ * FIPS mode and zero otherwise. Linux reads
+ * /proc/sys/crypto/fips_enabled; other hosted and freestanding targets report
+ * zero. The implementation is in src/arch/fips.zig.
  */
 
 #ifndef _JITTERENTROPY_ARCH_FIPS_H
@@ -67,8 +59,7 @@ int jent_fips_enabled_file(const char *file);
 #endif
 
 /*
- * Return non-zero when FIPS mode is active for the active backend.
- * Defined in arch/jitterentropy-arch-fips.c.
+ * Return non-zero when FIPS mode is active.
  */
 JENT_INTERNAL
 int jent_fips_enabled(void);
