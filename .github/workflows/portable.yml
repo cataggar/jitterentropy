@@ -130,13 +130,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # CMAKE_INSTALL_LIBDIR is pinned so the later steps can name the install
-      # tree, and the prefix is a native path for Windows cmake.
-      #
-      # CMAKE_BUILD_TYPE must name the configuration the install asks for:
-      # install(EXPORT) writes IMPORTED_LOCATION per configuration, and the
-      # "noconfig" file a build type-less single-config generator produces is
-      # not what --config Release looks for.
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
       - name: Build and install the library
         run: |
           prefix="$PWD/prefix"
@@ -144,36 +141,59 @@ jobs:
           Windows) prefix=$(cygpath -m "$prefix") ;;
           esac
           echo "JENT_PREFIX=$prefix" >> "$GITHUB_ENV"
-          cmake -S . -B build \
-            -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$prefix" \
-            -DCMAKE_INSTALL_LIBDIR=lib
-          cmake --build build --config Release --parallel 4
-          cmake --install build --config Release
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          opts="-Dlinkage=$linkage"
+          if [ "${{ runner.os }}" = Linux ]; then
+            opts="$opts -Dkernel-lib=true"
+          fi
+          zig build $opts --prefix "$prefix"
 
-      - name: Link and run through the CMake package
+      - name: Link and run against the installed prefix
         run: |
-          cmake -S tests/linking -B build-cmake -DCMAKE_PREFIX_PATH="$JENT_PREFIX"
-          cmake --build build-cmake --config Release --parallel 4
-          # Multi-config generators put the binary in a per-config directory.
+          mkdir -p build-link
           case "${{ runner.os }}" in
           Windows)
+            if [ "${{ matrix.shared }}" = ON ]; then
+              zig cc -std=c11 -I"$JENT_PREFIX/include" \
+                tests/linking/jitterentropy-linktest.c \
+                "$JENT_PREFIX/lib/jitterentropy.lib" \
+                -o build-link/jitterentropy-linktest.exe
+            else
+              zig cc -std=c11 -DJENT_STATIC_LIB -I"$JENT_PREFIX/include" \
+                tests/linking/jitterentropy-linktest.c \
+                "$JENT_PREFIX/lib/jitterentropy.lib" -lbcrypt \
+                -o build-link/jitterentropy-linktest.exe
+            fi
             # The DLL is installed to bin/ and resolved from PATH.
             export PATH="$PWD/prefix/bin:$PATH"
-            ./build-cmake/Release/jitterentropy-linktest.exe
+            ./build-link/jitterentropy-linktest.exe
             ;;
           *)
-            export LD_LIBRARY_PATH="$PWD/prefix/lib:$LD_LIBRARY_PATH"
-            export DYLD_LIBRARY_PATH="$PWD/prefix/lib:$DYLD_LIBRARY_PATH"
-            ./build-cmake/jitterentropy-linktest
+            case "${{ runner.os }}" in
+              Linux) LIBS="-pthread -lrt" ;;
+              *)     LIBS="-pthread" ;;
+            esac
+            zig cc -std=c11 -I"$PWD/prefix/include" \
+              tests/linking/jitterentropy-linktest.c \
+              -L"$PWD/prefix/lib" -ljitterentropy $LIBS \
+              -o build-link/jitterentropy-linktest
+            export LD_LIBRARY_PATH="$PWD/prefix/lib:${LD_LIBRARY_PATH:-}"
+            export DYLD_LIBRARY_PATH="$PWD/prefix/lib:${DYLD_LIBRARY_PATH:-}"
+            ./build-link/jitterentropy-linktest
+            if [ "${{ runner.os }}" = Linux ]; then
+              zig cc -std=c11 -I"$PWD/prefix/include" \
+                tests/linking/jitterentropy-kernel-linktest.c \
+                -L"$PWD/prefix/lib" -ljitterentropy-kernel \
+                -o build-link/jitterentropy-kernel-linktest
+              ./build-link/jitterentropy-kernel-linktest
+            fi
             ;;
           esac
 
       - name: Check the linkage
         if: runner.os != 'Windows'
         run: |
-          bin=./build-cmake/jitterentropy-linktest
+          bin=./build-link/jitterentropy-linktest
           case "${{ runner.os }}" in
           macOS) deps=$(otool -L "$bin") ;;
           *)     deps=$(ldd "$bin") ;;

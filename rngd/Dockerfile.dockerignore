@@ -1,10 +1,14 @@
 # Only what the build of the daemon reads.
 *
-!CMakeLists.txt
+!build.zig
+!build.zig.zon
 !jitterentropy.h
 !version.lds
 !arch
-!cmake
+!doc
+!linux_kernel/userspace
 !rngd
 !src
 !tests/linking
+!tests/raw-entropy/recording_library
+!tests/unit/unit-kernel-lib.c

@@ -29,7 +29,11 @@ jobs:
           usesh: true
           copyback: false
           prepare: |
-            pkg install -y bash cmake gmake
+            pkg install -y bash
+            fetch -qo /tmp/zig.tar.xz https://ziglang.org/download/0.17.0/zig-x86_64-freebsd-0.17.0.tar.xz
+            mkdir -p /usr/local/zig
+            tar -xJf /tmp/zig.tar.xz -C /usr/local/zig --strip-components=1
+            ln -sf /usr/local/zig/zig /usr/local/bin/zig
           run: |
             bash .github/scripts/vm-build-and-test.sh
 
@@ -45,7 +49,7 @@ jobs:
           usesh: true
           copyback: false
           prepare: |
-            pkg_add -I bash cmake gmake
+            pkg_add -I bash zig
           run: |
             bash .github/scripts/vm-build-and-test.sh
 
@@ -61,7 +65,7 @@ jobs:
           usesh: true
           copyback: false
           prepare: |
-            /usr/sbin/pkg_add bash cmake gmake
+            /usr/sbin/pkg_add bash zig
           run: |
             bash .github/scripts/vm-build-and-test.sh
 
@@ -77,6 +81,6 @@ jobs:
           usesh: true
           copyback: false
           prepare: |
-            pkg install -y bash cmake gmake
+            pkg install -y bash zig
           run: |
             bash .github/scripts/vm-build-and-test.sh

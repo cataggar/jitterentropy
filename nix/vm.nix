@@ -25,7 +25,7 @@ in
       # need the module: this is the only place they meet a real one.
       environment.systemPackages = [
         ((toolsFor pkgs).overrideAttrs (old: {
-          cmakeFlags = (old.cmakeFlags or [ ]) ++ [ "-DENABLE_KERNEL_LIB=ON" ];
+          zigFlags = (old.zigFlags or [ ]) ++ [ "-Dkernel-lib=true" ];
         }))
       ] ++ (with pkgs; [
         fx
@@ -216,7 +216,7 @@ in
             "getrawentropy --samples 1 --status | jq -e .version"
         ))
 
-        # The CMake-built userspace tools are on PATH.
+        # The Zig-built userspace tools are on PATH.
         for tool in ("jitterentropy-rng", "jitterentropy-osr",
                      "jitterentropy-hashtime", "jitterentropy-cpuinfo",
                      "gcd", "extractlsb", "getrawentropy",
