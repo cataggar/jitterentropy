@@ -19,7 +19,7 @@ include $(CLEAR_VARS)
 JENT_ROOT := $(LOCAL_PATH)/../..
 
 # This builds the library alone, for ndk-build users. The example app next to
-# it (see README.md) builds it through CMakeLists.txt instead.
+# it (see README.md) builds it through Zig (build.zig) instead.
 
 LOCAL_MODULE := jitterentropy
 
@@ -28,7 +28,7 @@ LOCAL_MODULE := jitterentropy
 # the internal timer needs no extra link library on Android.
 #
 # -fvisibility=hidden and version.lds limit the exports to the API of
-# jitterentropy.h, as the Makefile and CMakeLists.txt do; without them every
+# jitterentropy.h, as the Makefile and build.zig do; without them every
 # internal function of the library is exported. The NDK links with lld, which
 # takes the GNU version script.
 LOCAL_CFLAGS := -O0 -fvisibility=hidden -DJENT_CONF_ENABLE_INTERNAL_TIMER
@@ -37,7 +37,7 @@ LOCAL_LDFLAGS := -Wl,--version-script=$(JENT_ROOT)/version.lds
 LOCAL_C_INCLUDES := $(JENT_ROOT) $(JENT_ROOT)/src $(JENT_ROOT)/arch
 
 # The library consists of all core sources in src/ plus the OS/architecture
-# helpers in arch/ (the same set the Makefile and CMakeLists.txt build).
+# helpers in arch/ (the same set the Makefile and build.zig build).
 LOCAL_SRC_FILES := $(patsubst $(LOCAL_PATH)/%,%,\
 	$(wildcard $(JENT_ROOT)/src/*.c $(JENT_ROOT)/arch/*.c))
 

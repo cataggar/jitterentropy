@@ -5,7 +5,7 @@ let
 in
 {
   # The library with no operating system under it at all: an EFI
-  # application, built freestanding against gnu-efi. See tests/efi/README.md
+  # application, built freestanding with Zig. See tests/efi/README.md
   # for what it is for; in short, every other target here supplies an
   # allocator, a clock call, a CPU count and a random pool that the arch/
   # backends reach for, and this one supplies none of them.
@@ -58,26 +58,22 @@ in
   efiFor = pkgs: efiArch:
     let
       spec = efiArchs.${efiArch};
-      target = spec.pkgsFor pkgs;
-    in target.stdenv.mkDerivation {
+    in pkgs.stdenv.mkDerivation {
       pname = "jitterentropy-efi-${efiArch}";
       version = "3.8.0";
       src = self;
-      buildInputs = [ target.gnu-efi ];
-      enableParallelBuilding = true;
+      nativeBuildInputs = [ pkgs.zig ];
+      dontConfigure = true;
+      dontStrip = true;
+      dontPatchELF = true;
       # Every one of these would fight the build rather than harden it:
-      # the image is freestanding, position independent by its own linker
-      # script, and compiled at -O0 because the entropy core requires it.
+      # the image is freestanding, position independent, and compiled at
+      # -O0 because the entropy core requires it.
       hardeningDisable = [ "all" ];
       buildPhase = ''
         runHook preBuild
-        # CC, LD and OBJCOPY come from the (cross) stdenv rather than from
-        # a prefix guessed in the Makefile, which is what makes the same
-        # recipe work natively and cross.
-        make -C tests/efi -j"$NIX_BUILD_CORES" esp \
-          EFI_ARCH=${efiArch} \
-          GNUEFI=${target.gnu-efi} \
-          CC="$CC" LD="$LD" OBJCOPY="$OBJCOPY"
+        export ZIG_GLOBAL_CACHE_DIR="$TMPDIR/zig-cache"
+        zig build -Defi=true -Dtools=false --prefix "$TMPDIR/efi-out"
         runHook postBuild
       '';
       installPhase = ''
@@ -86,8 +82,8 @@ in
         # the VM check below can point QEMU straight at $out. The two
         # architectures have different default image names, so one
         # partition could hold both.
-        mkdir -p $out
-        cp -r tests/efi/esp/EFI $out/EFI
+        install -Dm644 "$TMPDIR/efi-out/efi/EFI/BOOT/${spec.image}" \
+          "$out/EFI/BOOT/${spec.image}"
         runHook postInstall
       '';
       meta = {

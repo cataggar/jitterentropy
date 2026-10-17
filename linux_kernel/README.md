@@ -419,7 +419,7 @@ the `jitter_rng` tool:
 	jitter_rng --status     # the JSON status document
 	jitter_rng -r 32 -x     # 32 random bytes as hexadecimal digits
 
-CMake builds and installs both with `-DENABLE_KERNEL_LIB=ON`, together with
+`zig build -Dkernel-lib=true` builds and installs both, together with
 `jitterentropy_uapi.h` for a caller issuing the ioctls itself. The library
 holds no Jitter RNG and does not link `libjitterentropy`.
 

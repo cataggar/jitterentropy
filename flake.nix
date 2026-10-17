@@ -1,6 +1,6 @@
 {
   description =
-    "Jitter RNG: userspace library/tools (CMake) and out-of-tree kernel module, plus NixOS VMs runnable via nix run and nix flake check.";
+    "Jitter RNG: userspace library/tools (Zig) and out-of-tree kernel module, plus NixOS VMs runnable via nix run and nix flake check.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

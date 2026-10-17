@@ -28,23 +28,27 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Configure
-        run: cmake -S . -B build -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
 
       - name: Build
-        run: cmake --build build -j "$(sysctl -n hw.ncpu)"
+        run: |
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build -Dlinkage="$linkage"
 
       - name: Run tests
         run: |
-          ctest --test-dir build --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo --json > /dev/null
-          export DYLD_LIBRARY_PATH="$PWD/build:$DYLD_LIBRARY_PATH"
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build -Dlinkage="$linkage" test
+          ./zig-out/bin/jitterentropy-cpuinfo
+          ./zig-out/bin/jitterentropy-cpuinfo --json > /dev/null
+          export DYLD_LIBRARY_PATH="$PWD/zig-out/lib:${DYLD_LIBRARY_PATH:-}"
           for opt in "" "--all-caches" "--force-internal-timer"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null
           done
 
           for opt in "--force-fips" "--ntg1"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null ||
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null ||
               echo "::warning::jitterentropy-rng $opt failed on this machine"
           done

@@ -7,7 +7,7 @@ directories:
   entropy data required for the SP800-90B analysis. Its `recording_library`
   is `libjitterentropy-record`, the recording as a library for programs where
   none of the recording tools can run, built only with
-  `-DENABLE_RECORDING=ON` (CMake) or `-Drecording=true` (`zig build`)
+  `-Drecording=true` (`zig build`)
 
 * `gcd`: Self test of the GCD analysis applied to the time deltas
 
@@ -21,7 +21,7 @@ directories:
 * `chardev`: Status reporting of the Linux kernel module character device
 
 * `linking`: A consumer of the installed library, built against an install
-  prefix through `find_package()` rather than as part of this build
+  prefix or linked as part of `zig build test`
 
 * `efi`: The library as an EFI application, which is the build with no
   operating system under it at all
@@ -97,34 +97,28 @@ assumption every replayed raw entropy recording rests on.
 Each harness is built twice:
 
 * `fuzz-api-standalone` and `fuzz-health-standalone` are built always, need no
-  particular compiler, and run a fixed sweep of inputs as part of the CTest
-  suite. Given file arguments they replay them instead, which is how a crash
+  particular compiler, and run a fixed sweep of inputs as part of `zig build test`.
+  Given file arguments they replay them instead, which is how a crash
   found by the fuzzer is reproduced.
 
-* `fuzz-api` and `fuzz-health` are the coverage-guided ones and need Clang with
-  the libFuzzer runtime:
+* `fuzz-api` and `fuzz-health` are built and installed with `-Dfuzzing=true`:
 
   ```
-  cmake -S . -B build-fuzz -DENABLE_FUZZING=ON
-  cmake --build build-fuzz
+  zig build -Dfuzzing=true
   mkdir -p corpus-health corpus-api
-  ./build-fuzz/tests/fuzz/fuzz-health -max_total_time=300 corpus-health/
-  ./build-fuzz/tests/fuzz/fuzz-api    -max_total_time=300 corpus-api/
+  ./zig-out/bin/fuzz-health -max_total_time=300 corpus-health/
+  ./zig-out/bin/fuzz-api    -max_total_time=300 corpus-api/
   ```
 
-  `ENABLE_FUZZING` instruments the whole build, not only the harness, since
-  libFuzzer guides itself by the coverage of the code under test. Neither is
-  registered as a test case: a fuzzing run has no end of its own.
-
-Pair it with `-DENABLE_SANITIZERS=ON` for the memory errors a fuzzer is run to
+Pair it with `-Dsanitizers=true` for the memory errors a fuzzer is run to
 find - but not in the same run as the search. The sanitizers cost `fuzz-api`
 about a factor of ten in executions per second, which is most of what it has;
 the cheaper order is to build the corpus without them and then replay it under
 them, which the standalone programs do from the command line:
 
 ```
-cmake -S . -B build-asan -DENABLE_SANITIZERS=ON && cmake --build build-asan
-./build-asan/tests/fuzz/fuzz-api-standalone corpus-api/*
+zig build -Dsanitizers=true
+./zig-out/bin/fuzz-api-standalone corpus-api/*
 ```
 
 Three limits keep a run finite. The first two cap how much work one call is
@@ -162,7 +156,7 @@ its first result or insert the first stamp of the recording twice.
 `jent_set_mock_timer()` goes further and replaces the time source for the whole
 library, so the startup self test, the noise source and the health tests all
 run on the supplied stamps. It exists only in a build configured with
-`-DMOCK_TIMER=ON`, which is off by default: a library whose clock the caller
+`-Dmock-timer=true`, which is off by default: a library whose clock the caller
 supplies produces no entropy of its own. `jent_status()` reports
 `mockedTimerBuild` so that fact cannot be lost between a test run and its
 report.
@@ -205,8 +199,8 @@ Where a
 property cannot be established on the machine or in the build at hand - no
 discoverable cache size, no lockable memory, the lag predictor compiled out -
 the case is reported as skipped rather than passed over silently. A program
-none of whose cases could run exits with 77, which CTest reports as skipped
-rather than passed.
+none of whose cases could run exits with 77, which `zig build test` treats as
+skipped rather than failed (unless `JENT_UT_STRICT=1` is set).
 
 A skip for want of a collector has to be earned. The reason is asked of
 something other than the allocation under test: whether memory can be
@@ -236,7 +230,7 @@ verifies that the expected error is reported *and* that no unrelated health
 test reported one, so the failure is attributed to the test under examination.
 
 Both the common and the NTG.1 cutoff configurations are covered. The program
-is `jitterentropy-health` in the CMake and Zig builds (installed with the
+is `jitterentropy-health` (installed with the
 tools). It takes the oversampling rate as an optional
 argument, defaulting to `JENT_MIN_OSR`; `-h` / `--help` prints its usage:
 
@@ -344,7 +338,7 @@ permanent cutoff already has.
 
 ## The daemon
 
-With `-DENABLE_RNGD=ON`, `rngd-version` runs `jitterentropy-rngd --version`,
+With `-Drngd=true`, `zig build test` runs `jitterentropy-rngd --version`,
 which needs neither root nor the kernel.
 
 ## With no operating system
@@ -362,27 +356,24 @@ and a collector built on one that cannot run would spin on its first
 measurement instead of reporting an error.
 
 ```
+zig build -Defi=true                               # BOOTX64.EFI and BOOTAA64.EFI
 nix build .#efi                                    # the EFI system partition
-nix build .#efi-aarch64                            # the same, cross-built
+nix build .#efi-aarch64                            # the same, for aarch64
 nix build .#checks.x86_64-linux.efi-vm             # build it and boot it
 nix build .#checks.x86_64-linux.efi-vm-aarch64     # and the aarch64 one
 ```
 
 Both architectures firmware is found on, from the one source: what differs is
-the calling convention, the red zone, the page size, whether the atomics may go
-out of line and how the image is converted to PE, and `tests/efi/Makefile` says
-so at each point. aarch64 is cross-built and emulated, so neither needs a
-machine of its own - but only x86_64 runs in CI, the aarch64 toolchain costing
-an hour to build where it is not already cached.
+the target (`x86_64-uefi-msvc` vs `aarch64-uefi-msvc`), the red zone, and
+whether the atomics may go out of line (`-mno-outline-atomics`).
 
 `-ffreestanding` is what selects that build: both GCC and Clang report it by
 setting `__STDC_HOSTED__` to zero, and `jitterentropy.h` defines
 `JENT_BAREMETAL` from it, after which every `arch/` backend takes its OS-less
 branch. What the library then needs from its integrator is six functions -
 `memcpy`, `memset`, `malloc`, `free`, `strlen` and `snprintf` - and
-`tests/efi/README.md` says which of them come from gnu-efi, which the
-application supplies over the EFI boot services, and what a reader of the
-output is entitled to conclude from it.
+`tests/efi/README.md` says how they are supplied over the EFI boot services,
+and what a reader of the output is entitled to conclude from it.
 
 The cross-compilation smoke builds in `flake.nix` already prove such a target
 translates and links. What this adds is that it runs: that the counter the
@@ -397,18 +388,14 @@ such a target, reports success, and hands out something it never measured.
 What it cannot see on its own is *how* the state those instances share is
 reached - a load that races a store gives the right answer nearly every time,
 and the wrong one on the machine nobody is testing on. Configuring with
-`-DENABLE_THREAD_SANITIZER=ON` adds that:
+`-Dtsan=true` adds that:
 
 ```
-cmake -S . -B build-tsan -DENABLE_THREAD_SANITIZER=ON && cmake --build build-tsan
-TSAN_OPTIONS=halt_on_error=1:suppressions=$PWD/tests/tsan.supp \
-  ctest --test-dir build-tsan --output-on-failure -LE unreliable
+zig build -Dtsan=true test
 ```
 
-The configure step prints that command, so it need not be remembered. It is a
-build of its own rather than an addition to `ENABLE_SANITIZERS`: the thread and
-the address sanitizer cannot be combined, and a run under one says nothing
-about the other.
+It is a build of its own rather than an addition to `-Dsanitizers=true`: the
+thread and undefined-behavior sanitizers are run separately.
 
 `tests/tsan.supp` suppresses one thing, and it is a race the library is built
 around rather than one it has yet to answer: when there is no usable clock the
@@ -431,29 +418,22 @@ rather than a property of the test.
 
 ## Running the tests
 
-The CMake build registers the deterministic tests with CTest, one per
-oversampling rate for the induced failure tests:
+`zig build test` runs the deterministic tests, including one run per
+oversampling rate (3..20) and replay vectors for the induced failure tests:
 
 ```
-cmake -S . -B build && cmake --build build
-ctest --test-dir build --output-on-failure -LE unreliable
+zig build test
 ```
-
-The tests that exercise the real noise source are labelled `unreliable`: they
-can fail for reasons that are properties of the machine rather than defects in
-the code, so a gating run excludes them with `-LE unreliable` and
-`ctest -L unreliable` runs only those.
 
 ## Coverage
 
-Configuring with `-DENABLE_COVERAGE=ON` instruments the build and adds a
-`coverage` target that runs the whole suite and writes a browsable HTML report
-to `<build>/coverage/index.html`. It needs either `gcovr` or `lcov` together
+Configuring with `-Dcoverage=true` instruments the build and adds a
+`coverage` step that runs the test suite and writes a browsable HTML report
+to `coverage/index.html`. It needs either `gcovr` or `lcov` together
 with `genhtml`:
 
 ```
-cmake -S . -B build -DENABLE_COVERAGE=ON && cmake --build build
-cmake --build build --target coverage
+zig build -Dcoverage=true coverage
 ```
 
 # Author

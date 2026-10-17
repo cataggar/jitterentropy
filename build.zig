@@ -64,6 +64,8 @@ const BuildOptions = struct {
     stack_protector: bool,
     external_crypto: ExternalCrypto,
     aarch64_nstime_register: ?[]const u8,
+    extra_include_dirs: ?[]const u8,
+    extra_lib_dirs: ?[]const u8,
     sanitizers: bool,
     tsan: bool,
     fuzzing: bool,
@@ -72,7 +74,19 @@ const BuildOptions = struct {
 };
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    var target = b.standardTargetOptions(.{});
+    if (target.query.isNative() and target.result.os.tag == .linux and target.result.isGnuLibC()) {
+        const host_glibc = detectHostGnuLibCVersion(b, target.result);
+        if (host_glibc.order(.{ .major = 2, .minor = 31, .patch = 0 }) == .lt) {
+            target = b.resolveTargetQuery(.{
+                .cpu_arch = target.result.cpu.arch,
+                .cpu_model = .native,
+                .os_tag = .linux,
+                .abi = target.result.abi,
+                .glibc_version = host_glibc,
+            });
+        }
+    }
     const optimize = b.standardOptimizeOption(.{});
 
     const linkage = b.option(
@@ -146,6 +160,24 @@ pub fn build(b: *std.Build) void {
         "aarch64-nstime-register",
         "System register to read for nanosecond time on AArch64 (default: CNTVCT_EL0)",
     );
+
+    const extra_include_dirs = b.option(
+        []const u8,
+        "include-dirs",
+        "Colon-separated additional header search directories",
+    );
+
+    const extra_lib_dirs = b.option(
+        []const u8,
+        "lib-dirs",
+        "Colon-separated additional library search directories (also added to RPATH)",
+    );
+
+    const install_tests = b.option(
+        bool,
+        "install-tests",
+        "Install unit and link test executables to bin/ (default: false)",
+    ) orelse false;
 
     const sanitizers = b.option(
         bool,
@@ -225,6 +257,8 @@ pub fn build(b: *std.Build) void {
         .stack_protector = stack_protector,
         .external_crypto = external_crypto,
         .aarch64_nstime_register = aarch64_nstime_register,
+        .extra_include_dirs = extra_include_dirs,
+        .extra_lib_dirs = extra_lib_dirs,
         .sanitizers = sanitizers,
         .tsan = tsan,
         .fuzzing = fuzzing,
@@ -276,6 +310,11 @@ pub fn build(b: *std.Build) void {
     }
     lib.installHeader(b.path("jitterentropy.h"), "jitterentropy.h");
     b.installArtifact(lib);
+    if (os_tag == .windows and linkage == .static) {
+        b.getInstallStep().dependOn(
+            &b.addInstallLibFile(lib.getEmittedBin(), "libjitterentropy.a").step,
+        );
+    }
 
     installPkgConfig(b, target, opts, linkage);
 
@@ -300,7 +339,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run jitterentropy test suite");
     const test_runner_exe = addTestRunnerExecutable(b, target);
     const tsan_options: ?[]const u8 = if (opts.tsan)
-        "halt_on_error=1:suppressions=tests/tsan.supp"
+        "handle_segv=0:halt_on_error=1:suppressions=tests/tsan.supp"
     else
         null;
 
@@ -589,7 +628,7 @@ pub fn build(b: *std.Build) void {
             false,
         );
         if (os_tag == .windows) {
-            cpuinfo_exe.root_module.linkSystemLibrary("advapi32", .{});
+            cpuinfo_exe.root_module.linkSystemLibrary("advapi32", .{ .use_pkg_config = .no });
         }
         b.installArtifact(cpuinfo_exe);
 
@@ -690,13 +729,13 @@ pub fn build(b: *std.Build) void {
     const run_flags_encode = b.addRunArtifact(flags_exe);
     applyTestEnv(run_flags_encode, tsan_options);
     run_flags_encode.addArgs(&.{ "ntg1", "JENT_MAX_MEMSIZE_1MB", "--hloopcnt", "4" });
-    run_flags_encode.expectStdOutEqual("1518338112\n");
+    run_flags_encode.expectStdOutEqual(if (os_tag == .windows) "1518338112\r\n" else "1518338112\n");
     test_step.dependOn(&run_flags_encode.step);
 
     const run_flags_mixed = b.addRunArtifact(flags_exe);
     applyTestEnv(run_flags_mixed, tsan_options);
     run_flags_mixed.addArg("JeNt_NtG1");
-    run_flags_mixed.expectStdOutEqual("64\n");
+    run_flags_mixed.expectStdOutEqual(if (os_tag == .windows) "64\r\n" else "64\n");
     test_step.dependOn(&run_flags_mixed.step);
 
     const FlagsFailCase = struct {
@@ -706,15 +745,15 @@ pub fn build(b: *std.Build) void {
     const flags_fail_cases: []const FlagsFailCase = &.{
         .{
             .args = &.{ "--decode", "0x200" },
-            .stderr = "refused: reserved bits 0x00000200 set\n",
+            .stderr = if (os_tag == .windows) "refused: reserved bits 0x00000200 set\r\n" else "refused: reserved bits 0x00000200 set\n",
         },
         .{
             .args = &.{ "--ntg1", "--force-internal-timer" },
-            .stderr = "refused: JENT_FORCE_INTERNAL_TIMER with JENT_NTG1\n",
+            .stderr = if (os_tag == .windows) "refused: JENT_FORCE_INTERNAL_TIMER with JENT_NTG1\r\n" else "refused: JENT_FORCE_INTERNAL_TIMER with JENT_NTG1\n",
         },
         .{
             .args = &.{ "JENT_HASHLOOP_1", "JENT_HASHLOOP_2" },
-            .stderr = "JENT_HASHLOOP_2: field already set\n",
+            .stderr = if (os_tag == .windows) "JENT_HASHLOOP_2: field already set\r\n" else "JENT_HASHLOOP_2: field already set\n",
         },
     };
     for (flags_fail_cases) |case| {
@@ -968,6 +1007,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        .sanitize_c = if (opts.sanitizers) .full else .off,
+        .sanitize_thread = opts.tsan,
     });
     zig_test_mod.addOptions("build_options", build_options);
     configureIncludePaths(b, zig_test_mod);
@@ -981,6 +1022,12 @@ pub fn build(b: *std.Build) void {
         .file = abi_test_helper_c,
         .flags = c_flags,
     });
+    if (opts.coverage_rt_file) |cov_rt| {
+        zig_test_mod.addCSourceFile(.{
+            .file = cov_rt,
+            .flags = &.{ "-std=gnu11", "-O2", "-fvisibility=hidden" },
+        });
+    }
 
     const zig_unit_tests = b.addTest(.{
         .name = "zig-unit-tests",
@@ -992,18 +1039,27 @@ pub fn build(b: *std.Build) void {
 
     for (unit_test_names) |ut_name| {
         const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, c_flags, false);
+        if (install_tests or (opts.tsan and std.mem.eql(u8, ut_name, "unit-concurrency"))) {
+            b.installArtifact(ut_exe);
+        }
         const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
         test_step.dependOn(&run_ut.step);
     }
 
     if (os_tag == .linux) {
         const ut_kern = addUnitTestExecutable(b, "unit-kernel-lib", target, optimize, opts, c_flags, false);
+        if (install_tests) {
+            b.installArtifact(ut_kern);
+        }
         const run_ut_kern = addSkipAwareTestRun(b, test_runner_exe, ut_kern, tsan_options);
         test_step.dependOn(&run_ut_kern.step);
     }
 
     for (mock_unit_test_names) |ut_name| {
         const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, c_flags, true);
+        if (install_tests) {
+            b.installArtifact(ut_exe);
+        }
         const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
         test_step.dependOn(&run_ut.step);
     }
@@ -1110,10 +1166,58 @@ pub fn build(b: *std.Build) void {
         .name = "jitterentropy-linktest",
         .root_module = linktest_mod,
     });
+    if (install_tests) {
+        b.installArtifact(linktest_exe);
+    }
     const run_linktest = b.addRunArtifact(linktest_exe);
     applyTestEnv(run_linktest, tsan_options);
     run_linktest.expectExitCode(0);
     test_step.dependOn(&run_linktest.step);
+
+    if (opts.coverage) {
+        const cov_step = b.step("coverage", "Run tests and generate HTML coverage report in zig-out/coverage");
+        const cov_cmd = b.addSystemCommand(&.{ "bash", "-c" });
+        cov_cmd.addArg(
+            \\set -e
+            \\for opt in "" "--all-caches" "--force-internal-timer" "--force-fips" "--ntg1"; do
+            \\  ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null 2>&1 || true
+            \\done
+            \\mkdir -p zig-out/coverage
+            \\gcov_tool=""
+            \\if command -v llvm-cov >/dev/null 2>&1; then
+            \\  gcov_tool="--gcov-executable 'llvm-cov gcov'"
+            \\elif command -v xcrun >/dev/null 2>&1 && xcrun --find llvm-cov >/dev/null 2>&1; then
+            \\  gcov_tool="--gcov-executable '$(xcrun --find llvm-cov) gcov'"
+            \\fi
+            \\if gcovr --gcov-ignore-parse-errors suspicious_hits.warn --version >/dev/null 2>&1; then
+            \\  parse_errors=suspicious_hits.warn
+            \\else
+            \\  parse_errors=all
+            \\fi
+            \\ignore_errors=""
+            \\if gcovr --gcov-ignore-errors=no_working_dir_found --version >/dev/null 2>&1; then
+            \\  ignore_errors="--gcov-ignore-errors=no_working_dir_found"
+            \\fi
+            \\exclude_tests=""
+            \\if compgen -G "src/*.c" >/dev/null; then
+            \\  exclude_tests='--exclude "tests/"'
+            \\fi
+            \\eval gcovr \
+            \\  --root . \
+            \\  .zig-cache \
+            \\  $gcov_tool \
+            \\  $ignore_errors \
+            \\  --gcov-ignore-parse-errors "$parse_errors" \
+            \\  --merge-mode-functions merge-use-line-min \
+            \\  $exclude_tests \
+            \\  --exclude "linux_kernel/" \
+            \\  --html-details zig-out/coverage/index.html \
+            \\  --print-summary
+        );
+        cov_cmd.step.dependOn(b.getInstallStep());
+        cov_cmd.step.dependOn(test_step);
+        cov_step.dependOn(&cov_cmd.step);
+    }
 }
 
 fn createCModule(
@@ -1132,6 +1236,23 @@ fn createCModule(
         .sanitize_thread = if (opts.tsan) true else null,
         .omit_frame_pointer = if (opts.sanitizers or opts.tsan or opts.coverage) false else null,
     });
+    if (opts.extra_include_dirs) |inc_dirs| {
+        var it = std.mem.splitScalar(u8, inc_dirs, ':');
+        while (it.next()) |dir| {
+            if (dir.len > 0) {
+                mod.addSystemIncludePath(.{ .cwd_relative = dir });
+            }
+        }
+    }
+    if (opts.extra_lib_dirs) |lib_dirs| {
+        var it = std.mem.splitScalar(u8, lib_dirs, ':');
+        while (it.next()) |dir| {
+            if (dir.len > 0) {
+                mod.addLibraryPath(.{ .cwd_relative = dir });
+                mod.addRPath(.{ .cwd_relative = dir });
+            }
+        }
+    }
     if (opts.coverage_rt_file) |cov_rt| {
         mod.addCSourceFile(.{
             .file = cov_rt,
@@ -1161,6 +1282,35 @@ fn applyTestEnv(run: *std.Build.Step.Run, tsan_options: ?[]const u8) void {
     }
 }
 
+fn detectHostGnuLibCVersion(b: *std.Build, host: std.Target) std.SemanticVersion {
+    if (std.process.run(b.allocator, b.graph.io, .{
+        .argv = &.{ "getconf", "GNU_LIBC_VERSION" },
+    })) |res| {
+        if (res.term == .exited and res.term.exited == 0) {
+            const out = std.mem.trim(u8, res.stdout, " \t\r\n");
+            if (std.mem.startsWith(u8, out, "glibc ")) {
+                if (std.Target.Query.parseVersion(out["glibc ".len..])) |ver| {
+                    return ver;
+                } else |_| {}
+            }
+        }
+    } else |_| {}
+
+    if (host.dynamic_linker.get()) |dl_path| {
+        var link_buf: [std.fs.max_path_bytes]u8 = undefined;
+        if (std.Io.Dir.readLinkAbsolute(b.graph.io, dl_path, &link_buf)) |n| {
+            const base = std.fs.path.basename(link_buf[0..n]);
+            if (std.mem.startsWith(u8, base, "ld-") and std.mem.endsWith(u8, base, ".so")) {
+                if (std.Target.Query.parseVersion(base["ld-".len .. base.len - ".so".len])) |ver| {
+                    return ver;
+                } else |_| {}
+            }
+        } else |_| {}
+    }
+
+    return host.os.version_range.linux.glibc;
+}
+
 fn addTestRunnerExecutable(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -1171,6 +1321,7 @@ fn addTestRunnerExecutable(
         .target = target,
         .optimize = .Debug,
         .link_libc = true,
+        .sanitize_c = .off,
     });
     mod.addCSourceFile(.{
         .file = runner_c,
@@ -1326,8 +1477,8 @@ fn configureCommonDefines(
 fn configureCryptoLibraries(mod: *std.Build.Module, opts: BuildOptions) void {
     switch (opts.external_crypto) {
         .none => {},
-        .awslc, .openssl => mod.linkSystemLibrary("crypto", .{ .use_pkg_config = .no }),
-        .libgcrypt => mod.linkSystemLibrary("gcrypt", .{ .use_pkg_config = .no }),
+        .awslc, .openssl => mod.linkSystemLibrary("crypto", .{ .use_pkg_config = .no, .needed = true }),
+        .libgcrypt => mod.linkSystemLibrary("gcrypt", .{ .use_pkg_config = .no, .needed = true }),
     }
 }
 
@@ -1338,9 +1489,9 @@ fn configureSystemLibraries(
 ) void {
     const os_tag = target.result.os.tag;
     if (os_tag == .windows) {
-        mod.linkSystemLibrary("bcrypt", .{});
+        mod.linkSystemLibrary("bcrypt", .{ .use_pkg_config = .no });
     } else if (opts.internal_timer and !target.result.abi.isAndroid() and os_tag != .freebsd) {
-        mod.linkSystemLibrary("pthread", .{});
+        mod.linkSystemLibrary("pthread", .{ .use_pkg_config = .no });
     }
     configureCryptoLibraries(mod, opts);
 }
@@ -1365,7 +1516,7 @@ fn addAbsorbingExecutable(
         configureSystemLibraries(mod, target, opts);
     }
     if (needs_libm) {
-        mod.linkSystemLibrary("m", .{});
+        mod.linkSystemLibrary("m", .{ .use_pkg_config = .no });
     }
     mod.addCSourceFiles(.{
         .files = files,
@@ -1398,7 +1549,7 @@ fn addToolExecutable(
         configureCryptoLibraries(mod, opts);
     }
     if (needs_libm) {
-        mod.linkSystemLibrary("m", .{});
+        mod.linkSystemLibrary("m", .{ .use_pkg_config = .no });
     }
     mod.addCSourceFile(.{
         .file = b.path(src_path),
@@ -1473,6 +1624,11 @@ fn getCFlags(
     }
     if (arch == .x86_64 or arch == .x86 or arch == .aarch64) {
         try list.append(b.allocator, "-fzero-call-used-regs=used");
+    }
+    if ((arch == .powerpc64le or arch == .powerpc64) and target.result.isGnuLibC() and
+        target.result.os.version_range.linux.glibc.order(.{ .major = 2, .minor = 32, .patch = 0 }) == .lt)
+    {
+        try list.append(b.allocator, "-mabi=ibmlongdouble");
     }
     if (opts.sanitizers) {
         try list.appendSlice(b.allocator, &.{
@@ -1712,7 +1868,7 @@ fn addEfiTargets(b: *std.Build) void {
         });
         efi_mod.addIncludePath(efi_inc_dir);
         configureIncludePaths(b, efi_mod);
-        efi_mod.addCMacro("JENT_CONF_ENABLE_INTERNAL_TIMER", "1");
+        efi_mod.addCMacro("JENT_STATIC_LIB", "1");
         efi_mod.addCSourceFiles(.{
             .files = lib_c_sources,
             .flags = efi_flags,
@@ -1870,6 +2026,24 @@ const gcov_runtime_c_source =
     \\        if (n->writeout) n->writeout();
     \\    }
     \\}
+    \\
+    \\#if !defined(_WIN32)
+    \\#include <sys/types.h>
+    \\#include <unistd.h>
+    \\static void gcov_reset_all(void) {
+    \\    for (struct gcov_Node *n = gcov_head; n; n = n->next) {
+    \\        if (n->reset) n->reset();
+    \\    }
+    \\}
+    \\__attribute__((weak, visibility("hidden")))
+    \\pid_t __gcov_fork(void) {
+    \\    pid_t pid = fork();
+    \\    if (pid == 0) {
+    \\        gcov_reset_all();
+    \\    }
+    \\    return pid;
+    \\}
+    \\#endif
     \\
     \\__attribute__((weak, visibility("hidden")))
     \\void llvm_gcov_init(gcov_fn writeout, gcov_fn reset) {
@@ -2138,14 +2312,6 @@ const efi_support_c_source =
     \\}
     \\
     \\static void efi_putc(CHAR16 ch, CHAR16 *buf, size_t *pos, size_t cap) {
-    \\    if (ch == L'\n') {
-    \\        if (*pos + 2 >= cap && ST && ST->ConOut) {
-    \\            buf[*pos] = 0;
-    \\            ST->ConOut->OutputString(ST->ConOut, buf);
-    \\            *pos = 0;
-    \\        }
-    \\        buf[(*pos)++] = L'\r';
-    \\    }
     \\    if (*pos + 1 >= cap && ST && ST->ConOut) {
     \\        buf[*pos] = 0;
     \\        ST->ConOut->OutputString(ST->ConOut, buf);

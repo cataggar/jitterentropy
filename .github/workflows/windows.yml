@@ -17,8 +17,8 @@ defaults:
     shell: bash
 
 jobs:
-  windows-msvc:
-    name: MSVC, ${{ matrix.os }}, ${{ matrix.shared == 'ON' && 'shared' || 'static' }}
+  windows:
+    name: Zig, ${{ matrix.os }}, ${{ matrix.shared == 'ON' && 'shared' || 'static' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -28,50 +28,22 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Configure
-        run: cmake -S . -B build -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
 
       - name: Build
-        run: cmake --build build --config Release -j
+        run: |
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build -Dlinkage="$linkage"
 
       - name: Run tests
         run: |
-          export PATH="$PWD/build/Release:$PATH"
-          ctest --test-dir build -C Release --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/Release/jitterentropy-cpuinfo.exe
-          rng=./build/tests/raw-entropy/recording_userspace/Release/jitterentropy-rng.exe
-          for opt in "" "--all-caches" "--force-internal-timer"; do
-            "$rng" 256 $opt > /dev/null
-          done
-
-          for opt in "--force-fips" "--ntg1"; do
-            "$rng" 256 $opt > /dev/null ||
-              echo "::warning::jitterentropy-rng $opt failed on this machine"
-          done
-
-  # On arm64 as well: clang in MSVC mode takes neither MSVC's ARM intrinsics
-  # nor its x86 ones, so its branches in arch/ differ from both.
-  windows-clang-cl:
-    name: clang-cl, ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ windows-latest, windows-11-arm ]
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Configure
-        run: cmake -S . -B build -T ClangCL
-
-      - name: Build
-        run: cmake --build build --config Release -j
-
-      - name: Run tests
-        run: |
-          ctest --test-dir build -C Release --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/Release/jitterentropy-cpuinfo.exe
-          rng=./build/tests/raw-entropy/recording_userspace/Release/jitterentropy-rng.exe
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          export PATH="$PWD/zig-out/bin:$PATH"
+          zig build -Dlinkage="$linkage" test
+          ./zig-out/bin/jitterentropy-cpuinfo.exe
+          rng=./zig-out/bin/jitterentropy-rng.exe
           for opt in "" "--all-caches" "--force-internal-timer"; do
             "$rng" 256 $opt > /dev/null
           done
@@ -98,26 +70,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
       - uses: msys2/setup-msys2@v2
         with:
           msystem: ${{ matrix.msystem }}
+          path-type: inherit
           update: true
           install: >-
             ${{ matrix.prefix }}-gcc
-            ${{ matrix.prefix }}-cmake
-            ${{ matrix.prefix }}-ninja
-
-      - name: Configure
-        run: cmake -S . -B build -G Ninja
 
       - name: Build
-        run: cmake --build build -j
+        run: zig build -Dtarget=x86_64-windows-gnu
 
       - name: Run tests
         run: |
-          ctest --test-dir build --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo.exe
-          rng=./build/tests/raw-entropy/recording_userspace/jitterentropy-rng.exe
+          zig build -Dtarget=x86_64-windows-gnu test
+          ./zig-out/bin/jitterentropy-cpuinfo.exe
+          rng=./zig-out/bin/jitterentropy-rng.exe
           for opt in "" "--all-caches" "--force-internal-timer"; do
             "$rng" 256 $opt > /dev/null
           done
@@ -140,14 +112,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
+          path-type: inherit
           update: true
           install: >-
             mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-pkgconf
 
       # Native Windows programs, so their paths go through cygpath.
@@ -155,19 +130,8 @@ jobs:
         run: |
           prefix=$(cygpath -m "$PWD/prefix")
           echo "JENT_PREFIX=$prefix" >> "$GITHUB_ENV"
-          cmake -S . -B build -G Ninja \
-            -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
-            -DCMAKE_INSTALL_PREFIX="$prefix" \
-            -DCMAKE_INSTALL_LIBDIR=lib
-          cmake --build build --parallel 4
-          cmake --install build
-
-      - name: Link and run through the CMake package
-        run: |
-          cmake -S tests/linking -B build-cmake -G Ninja \
-            -DCMAKE_PREFIX_PATH="$JENT_PREFIX"
-          cmake --build build-cmake --parallel 4
-          PATH="$PWD/prefix/bin:$PATH" ./build-cmake/jitterentropy-linktest.exe
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build -Dtarget=x86_64-windows-gnu -Dlinkage="$linkage" --prefix "$prefix"
 
       - name: Link and run through pkg-config
         run: |
@@ -207,13 +171,14 @@ jobs:
 
       - uses: actions/checkout@v5
 
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
       - uses: cygwin/cygwin-install-action@v6
         with:
           packages: |
-            cmake
-            gcc-core
-            make
             binutils
 
       - name: Build and test
-        run: MAKE="make" bash .github/scripts/vm-build-and-test.sh
+        run: bash .github/scripts/vm-build-and-test.sh

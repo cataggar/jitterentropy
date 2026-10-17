@@ -1,8 +1,10 @@
 # Android example app
 
 A small app that builds the Jitter RNG into an Android app the way an app
-would embed it: `app/src/main/cpp/CMakeLists.txt` includes the library's own
-`CMakeLists.txt` and links it into a JNI library, `libjitterentropy_jni.so`.
+would embed it: `app/build.gradle.kts` invokes `zig build` to cross-compile
+`libjitterentropy.a` and `libjitterentropy-record.a` for `aarch64-linux-android`
+and `x86_64-linux-android` and links them into a JNI library,
+`libjitterentropy-jni.so`.
 The app allocates one collector at start-up. On the *Output* tab one button
 shows its `jent_status()` document, the other 32 bytes of its output in hex.
 Both are also written to logcat under the tag `JitterEntropyExample`. On the
@@ -49,16 +51,36 @@ copy it off the phone with `adb` and how to analyze it.
   thread
 - `app/src/main/java/.../Recorder.kt` - the recording of the *Record* tab,
   through `jent_record_raw()` of `libjitterentropy-record`, which
-  `app/src/main/cpp/CMakeLists.txt` builds with `ENABLE_RECORDING` and links
+  `app/build.gradle.kts` builds with `-Drecording=true` and links
   beside `libjitterentropy`
 - `app/src/main/java/.../MainActivity.kt` - the UI, in Jetpack Compose with
   Material 3
 
-## Building
+## Cross-compiling with `zig build`
+
+To cross-compile `libjitterentropy.a` and `libjitterentropy-record.a` directly
+with `zig build` against an Android NDK sysroot:
+
+```sh
+SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr"
+
+for target in aarch64-linux-android x86_64-linux-android; do
+  zig build \
+    -Dtarget="$target" \
+    -Dlinkage=static \
+    -Drecording=true \
+    -Dtools=false \
+    -Dinclude-dirs="$SYSROOT/include:$SYSROOT/include/$target" \
+    -Dlib-dirs="$SYSROOT/lib/$target/23:$SYSROOT/lib/$target" \
+    --prefix "zig-out-$target"
+done
+```
+
+## Building the app
 
 Open this directory in Android Studio, or run `gradle assembleDebug` with a
-Gradle the Android Gradle plugin in `build.gradle.kts` supports and
-`ANDROID_HOME` pointing at an SDK. No Gradle wrapper is checked in.
+Gradle the Android Gradle plugin in `build.gradle.kts` supports, `zig` in
+`PATH`, and `ANDROID_HOME` pointing at an SDK. No Gradle wrapper is checked in.
 
 ## ndk-build
 

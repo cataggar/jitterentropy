@@ -25,10 +25,9 @@ android {
         }
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "4.1.2"
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs(layout.buildDirectory.dir("zigJniLibs"))
         }
     }
 
@@ -40,6 +39,62 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
+
+val buildNativeWithZig by tasks.registering {
+    val outDir = layout.buildDirectory.dir("zigJniLibs")
+    outputs.dir(outDir)
+    doLast {
+        val jentRoot = rootDir.parentFile
+        val ndkDir = android.ndkDirectory
+        val hostTag = if (System.getProperty("os.name").lowercase().contains("mac")) "darwin-x86_64" else "linux-x86_64"
+        val sysroot = ndkDir.resolve("toolchains/llvm/prebuilt/$hostTag/sysroot/usr")
+        val targets = mapOf(
+            "arm64-v8a" to "aarch64-linux-android",
+            "x86_64" to "x86_64-linux-android",
+        )
+        for ((abi, zigTarget) in targets) {
+            val prefixDir = layout.buildDirectory.dir("zigPrefix/$abi").get().asFile
+            val abiLibDir = outDir.get().asFile.resolve(abi)
+            abiLibDir.mkdirs()
+            val archTriple = if (abi == "arm64-v8a") "aarch64-linux-android" else "x86_64-linux-android"
+            val incDirs = "${sysroot.resolve("include")}:${sysroot.resolve("include/$archTriple")}"
+            val libDirs = "${sysroot.resolve("lib/$archTriple/23")}:${sysroot.resolve("lib/$archTriple")}"
+            project.exec {
+                workingDir = jentRoot
+                commandLine(
+                    "zig", "build",
+                    "-Dtarget=$zigTarget",
+                    "-Dlinkage=static",
+                    "-Drecording=true",
+                    "-Dtools=false",
+                    "-Dinclude-dirs=$incDirs",
+                    "-Dlib-dirs=$libDirs",
+                    "--prefix", prefixDir.absolutePath,
+                )
+            }
+            project.exec {
+                workingDir = projectDir
+                commandLine(
+                    "zig", "cc",
+                    "-target", zigTarget,
+                    "-shared", "-fPIC", "-O2",
+                    "-I${prefixDir.resolve("include")}",
+                    "-I${sysroot.resolve("include")}",
+                    "-I${sysroot.resolve("include/$archTriple")}",
+                    "-L${libDirs.replace(":", " -L")}",
+                    "src/main/cpp/jitterentropy-jni.c",
+                    prefixDir.resolve("lib/libjitterentropy.a").absolutePath,
+                    prefixDir.resolve("lib/libjitterentropy-record.a").absolutePath,
+                    "-o", abiLibDir.resolve("libjitterentropy-jni.so").absolutePath,
+                )
+            }
+        }
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn(buildNativeWithZig)
 }
 
 dependencies {
