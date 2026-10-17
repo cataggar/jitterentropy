@@ -38,7 +38,7 @@ exported=$(awk -v strip_us="$strip_us" '
 			  "__bss_end__ __bss_start__ _bss_end__ __data_start " \
 			  "_DYNAMIC _GLOBAL_OFFSET_TABLE_ " \
 			  "_PROCEDURE_LINKAGE_TABLE_ _mh_dylib_header " \
-			  "dyld_stub_binder", t, " ")
+			  "dyld_stub_binder __dso_handle", t, " ")
 		for (i = 1; i <= n; i++)
 			toolchain[t[i]] = 1
 	}
