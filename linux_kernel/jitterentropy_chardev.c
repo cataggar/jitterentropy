@@ -46,7 +46,7 @@
 /*
  * The OSR and flags used to allocate the per-open Jitter RNG instances are
  * shared with the crypto API interface and are configurable via the module
- * parameters of the same name (see jitterentropy_mod.c).
+ * parameters of the same name (see kmod_core.zig).
  */
 extern unsigned int jent_osr;
 extern unsigned int jent_flags;

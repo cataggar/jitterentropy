@@ -19,7 +19,7 @@ in
         src = self;
 
         hardeningDisable = [ "pic" "format" ];
-        nativeBuildInputs = kernel.moduleBuildDependencies;
+        nativeBuildInputs = kernel.moduleBuildDependencies ++ [ pkgs.zig ];
 
         buildPhase = ''
           runHook preBuild
@@ -174,7 +174,7 @@ in
       version = kernel.version;
       src = kernel.src;
 
-      nativeBuildInputs = with pkgs; [ bc bison flex perl elfutils openssl ];
+      nativeBuildInputs = with pkgs; [ bc bison flex perl elfutils openssl zig ];
 
       # As nixpkgs' own kernel derivations: it sets its own flags.
       hardeningDisable = [ "all" ];

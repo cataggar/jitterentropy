@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 pub const build_options = @import("build_options");
+pub const enable_random_memaccess = false;
 
 // ============================================================================
 // Version Constants (jitterentropy.h)
@@ -273,6 +274,23 @@ pub const jent_notime_thread = extern struct {
     jent_notime_stop: ?*const fn (?*anyopaque) callconv(.c) void = null,
 };
 
+pub const PthreadAttr = extern struct {
+    __size: [size]u8 align(@alignOf(c_long)) = @splat(0),
+
+    const size: usize = switch (builtin.os.tag) {
+        .linux => if (@sizeOf(usize) == 4)
+            36
+        else if (builtin.cpu.arch == .aarch64 and (builtin.abi.isGnu() or builtin.abi.isAndroid()))
+            64
+        else
+            56,
+        .macos, .ios, .tvos, .watchos, .visionos => if (@sizeOf(usize) == 8) 64 else 40,
+        .netbsd => 2 * @sizeOf(usize),
+        .freebsd, .openbsd, .dragonfly, .illumos => @sizeOf(usize),
+        else => @sizeOf(std.c.pthread_attr_t),
+    };
+};
+
 pub const jent_notime_ctx = if (is_freestanding) extern struct {
     notime_cpu: c_ulong = 0,
 } else if (builtin.os.tag == .windows) extern struct {
@@ -282,7 +300,7 @@ pub const jent_notime_ctx = if (is_freestanding) extern struct {
     notime_cpu: c_ulong = 0,
     notime_thread_started: c_int = 0,
 } else extern struct {
-    notime_pthread_attr: std.c.pthread_attr_t = std.mem.zeroes(std.c.pthread_attr_t),
+    notime_pthread_attr: PthreadAttr = .{},
     notime_thread_id: ?std.c.pthread_t = null,
     notime_cpu: c_ulong = 0,
     notime_thread_started: c_int = 0,
@@ -676,6 +694,7 @@ pub extern fn jent_os_random_supported() callconv(.c) c_int;
 
 pub extern fn jent_yield() callconv(.c) void;
 pub extern fn jent_get_nstime(out: *u64) callconv(.c) void;
+pub extern fn jent_get_nstime_internal(ec: *rand_data, out: *u64) callconv(.c) void;
 
 // ============================================================================
 // Unit Tests: Constants, Inline Helpers, and C-ABI Struct & Bitfield Layout

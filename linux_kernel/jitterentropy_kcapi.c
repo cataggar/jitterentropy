@@ -33,7 +33,7 @@
 /*
  * The OSR and flags used to allocate the per-tfm Jitter RNG instances and the
  * verbose logging switch are configurable via the module parameters of the
- * same name (see jitterentropy_mod.c).
+ * same name (see kmod_core.zig).
  */
 extern unsigned int jent_osr;
 extern unsigned int jent_flags;

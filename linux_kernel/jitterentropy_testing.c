@@ -105,7 +105,7 @@ static unsigned int logged_flags = 0xffffffff;
 
 /*
  * Verbose logging switch, configurable via the module parameter of the same
- * name (see jitterentropy_mod.c).
+ * name (see kmod_core.zig).
  */
 extern unsigned int jent_verbose;
 

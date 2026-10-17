@@ -80,58 +80,72 @@ endif
 
 obj-$(CONFIG_EXTERNAL_JITTERENTROPY)  := jitter_rng.o
 
-jitter_rng-y += ../src/jitterentropy-base.o				       \
-		../src/jitterentropy-gcd.o				       \
-		../src/jitterentropy-health.o				       \
-		../src/jitterentropy-noise.o				       \
-		../src/jitterentropy-sha3.o				       \
-		../src/jitterentropy-status.o				       \
-		../src/jitterentropy-timer.o				       \
-		../src/jitterentropy-uuid.o				       \
-		../arch/jitterentropy-arch-atomic.o			       \
-		../arch/jitterentropy-arch-memory.o			       \
-		../arch/jitterentropy-arch-timer.o			       \
-		../arch/jitterentropy-arch-sched.o			       \
-		../arch/jitterentropy-arch-cache.o			       \
-		../arch/jitterentropy-arch-fips.o			       \
-		../arch/jitterentropy-arch-ncpu.o			       \
-		../arch/jitterentropy-arch-random.o			       \
-		jitterentropy_mod.o					       \
-		jitterentropy_ioctl.o					       \
-		jitterentropy_proc.o					       \
-		jitterentropy_selftest.o				       \
-		jitterentropy_status.o
+jitter_rng-y += jitterentropy_zig.o jitterentropy_kbuild_shim.o
 
-jitter_rng_c_args_zero = -O0 $(jitter_rng_lib_c_args)
+CFLAGS_jitterentropy_kbuild_shim.o = $(jitter_rng_c_args)
 
-CFLAGS_../src/jitterentropy-base.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-gcd.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-health.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-noise.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-status.o = $(jitter_rng_lib_c_args)
-# The UUID is formatting, not measurement: it needs no -O0.
-CFLAGS_../src/jitterentropy-uuid.o = $(jitter_rng_lib_c_args)
-CFLAGS_../src/jitterentropy-sha3.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-timer.o = $(jitter_rng_c_args_zero)
-CFLAGS_../arch/jitterentropy-arch-atomic.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-memory.o = $(jitter_rng_lib_c_args)
-# Deliberately not $(jitter_rng_c_args_zero), unlike the entropy core above.
-# On architectures without a counter instruction this object reads the clock
-# through <linux/timex.h>, and kernel headers are only meant to build
-# optimized. The -O0 requirement covers the measured loops in the entropy
-# core, not the counter read, so this costs a call per timestamp and nothing
-# else.
-CFLAGS_../arch/jitterentropy-arch-timer.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-sched.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-cache.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-fips.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-ncpu.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-random.o = $(jitter_rng_lib_c_args)
-CFLAGS_jitterentropy_mod.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_ioctl.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_proc.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_selftest.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_status.o = $(jitter_rng_c_args)
+# Zig target mapping for the architectures supported by the library. Keep the
+# object freestanding: Linux headers and macro-only interfaces stay in the C
+# shim above.
+ifeq ($(ARCH),x86)
+jent_zig_target := x86_64-freestanding-none
+jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
+jent_zig_model := -mcmodel kernel
+else ifeq ($(ARCH),x86_64)
+jent_zig_target := x86_64-freestanding-none
+jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
+jent_zig_model := -mcmodel kernel
+else ifeq ($(ARCH),arm64)
+jent_zig_target := aarch64-freestanding-none
+jent_zig_cpu := generic-fp_armv8-neon
+else ifeq ($(ARCH),arm)
+jent_zig_target := arm-freestanding-none
+jent_zig_cpu := generic
+else ifeq ($(ARCH),riscv)
+jent_zig_target := riscv64-freestanding-none
+jent_zig_cpu := generic
+else ifeq ($(ARCH),s390)
+jent_zig_target := s390x-freestanding-none
+jent_zig_cpu := baseline
+else ifeq ($(ARCH),powerpc)
+jent_zig_target := powerpc64le-freestanding-none
+jent_zig_cpu := baseline
+else ifeq ($(ARCH),sparc)
+jent_zig_target := sparc64-freestanding-none
+jent_zig_cpu := baseline
+else ifeq ($(ARCH),loongarch)
+jent_zig_target := loongarch64-freestanding-none
+jent_zig_cpu := baseline
+else
+$(error unsupported ARCH '$(ARCH)' for the Jitter RNG Zig core)
+endif
+
+jent_zig_sources := $(wildcard $(jent_srcdir)/../src/*.zig)		       \
+		    $(wildcard $(jent_srcdir)/../src/arch/*.zig)		       \
+		    $(jent_srcdir)/kmod_core.zig				       \
+		    $(jent_srcdir)/kernel_build_options.zig
+
+quiet_cmd_jent_zig = ZIG     $@
+      cmd_jent_zig = ZIG_GLOBAL_CACHE_DIR="$(obj)/.zig-cache"		       \
+		     ZIG_LOCAL_CACHE_DIR="$(obj)/.zig-cache"		       \
+		     TMPDIR="$(obj)/.zig-cache/tmp"			       \
+		     mkdir -p "$(obj)/.zig-cache/tmp" &&		       \
+		     ZIG_GLOBAL_CACHE_DIR="$(obj)/.zig-cache"		       \
+		     ZIG_LOCAL_CACHE_DIR="$(obj)/.zig-cache"		       \
+		     TMPDIR="$(obj)/.zig-cache/tmp"			       \
+		     zig build-obj -target $(jent_zig_target)		       \
+		       -mcpu '$(jent_zig_cpu)' $(jent_zig_model) -O Debug       \
+		       -fno-PIC -fno-PIE -fno-stack-protector		       \
+		       -fno-omit-frame-pointer -ffunction-sections		       \
+		       -fdata-sections -femit-bin="$@"			       \
+		       --dep build_options --dep kmod_core		       \
+		       -Mroot="$(jent_srcdir)/../src/kernel_root.zig"	       \
+		       -Mbuild_options="$(jent_srcdir)/kernel_build_options.zig" \
+		       -Mkmod_core="$(jent_srcdir)/kmod_core.zig"
+
+targets += jitterentropy_zig.o
+$(obj)/jitterentropy_zig.o: $(jent_zig_sources) FORCE
+	$(call if_changed,jent_zig)
 
 ################### Kernel Crypto API Interface Compilation ####################
 

@@ -16,6 +16,7 @@ clean:
 	@- $(RM) $(jitter_rng-y)
 	@- $(RM) $(join $(dir $(jitter_rng-y)), $(addprefix ., $(notdir $(jitter_rng-y:.o=.o.cmd))))
 	@- $(RM) $(join $(dir $(jitter_rng-y)), $(addprefix ., $(notdir $(jitter_rng-y:.o=.o.d))))
+	@- $(RM) -r .zig-cache
 
 modules modules_install:
 	# Compile the KO files

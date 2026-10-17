@@ -177,6 +177,12 @@ pub fn build(b: *std.Build) void {
         "Build freestanding UEFI applications BOOTX64.EFI and BOOTAA64.EFI (default: false)",
     ) orelse false;
 
+    const enable_kernel_obj = b.option(
+        bool,
+        "kernel-obj",
+        "Build the freestanding Linux kernel Zig object (default: false)",
+    ) orelse false;
+
     if (sanitizers and tsan) {
         std.debug.panic("-Dsanitizers=true and -Dtsan=true cannot be enabled together", .{});
     }
@@ -229,6 +235,9 @@ pub fn build(b: *std.Build) void {
 
     if (enable_efi) {
         addEfiTargets(b);
+    }
+    if (enable_kernel_obj) {
+        addKernelObject(b, target);
     }
 
     const build_options = b.addOptions();
@@ -1200,7 +1209,63 @@ fn createCModule(
             .flags = &.{ "-std=gnu11", "-O2", "-fvisibility=hidden" },
         });
     }
+
     return mod;
+}
+
+fn addKernelObject(
+    b: *std.Build,
+    selected_target: std.Build.ResolvedTarget,
+) void {
+    const arch = selected_target.result.cpu.arch;
+    var kernel_query = std.Target.Query{
+        .cpu_arch = arch,
+        .os_tag = .freestanding,
+        .abi = .none,
+        .cpu_model = .baseline,
+    };
+    if (arch == .x86_64) {
+        kernel_query.cpu_features_add = std.Target.x86.featureSet(&.{.soft_float});
+        kernel_query.cpu_features_sub = std.Target.x86.featureSet(&.{ .mmx, .sse, .sse2, .avx });
+    }
+    const kernel_target = b.resolveTargetQuery(kernel_query);
+
+    const kernel_options = b.addOptions();
+    kernel_options.addOption(bool, "internal_timer", false);
+    kernel_options.addOption(bool, "mock_timer", false);
+    kernel_options.addOption(bool, "raw_memory_access", false);
+    kernel_options.addOption(bool, "stack_protector", false);
+    kernel_options.addOption(std.builtin.LinkMode, "linkage", .static);
+    kernel_options.addOption(ExternalCrypto, "external_crypto", .none);
+    kernel_options.addOption(?[]const u8, "aarch64_nstime_register", null);
+    kernel_options.addOption(bool, "is_linux_kernel", true);
+
+    const kernel_mod = b.createModule(.{
+        .root_source_file = b.path("src/kernel_root.zig"),
+        .target = kernel_target,
+        .optimize = .Debug,
+        .link_libc = false,
+        .pic = false,
+        .omit_frame_pointer = false,
+    });
+    if (arch == .x86_64) kernel_mod.code_model = .kernel;
+    kernel_mod.addOptions("build_options", kernel_options);
+    kernel_mod.addImport("kmod_core", b.createModule(.{
+        .root_source_file = b.path("linux_kernel/kmod_core.zig"),
+        .target = kernel_target,
+        .optimize = .Debug,
+        .link_libc = false,
+        .pic = false,
+        .omit_frame_pointer = false,
+    }));
+
+    const object = b.addObject(.{
+        .name = "jitterentropy_zig",
+        .root_module = kernel_mod,
+    });
+    b.getInstallStep().dependOn(
+        &b.addInstallFile(object.getEmittedBin(), "lib/jitterentropy_zig.o").step,
+    );
 }
 
 fn configureInstallRPath(
