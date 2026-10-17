@@ -290,11 +290,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run jitterentropy test suite");
     const test_runner_exe = addTestRunnerExecutable(b, target);
     const tsan_options: ?[]const u8 = if (opts.tsan)
-        std.fmt.allocPrint(
-            b.allocator,
-            "halt_on_error=1:suppressions={f}",
-            .{b.root.join(b.allocator, "tests/tsan.supp") catch @panic("OOM")},
-        ) catch @panic("OOM")
+        "halt_on_error=1:suppressions=tests/tsan.supp"
     else
         null;
 
@@ -885,9 +881,7 @@ fn configureInstallRPath(
 
 fn applyTestEnv(run: *std.Build.Step.Run, tsan_options: ?[]const u8) void {
     if (tsan_options) |tsan_opt| {
-        if (run.step.owner.graph.environ_map.get("TSAN_OPTIONS") == null) {
-            run.setEnvironmentVariable("TSAN_OPTIONS", tsan_opt);
-        }
+        run.setEnvironmentVariable("TSAN_OPTIONS", tsan_opt);
     }
 }
 
@@ -1230,16 +1224,6 @@ fn getCFlags(
     return list.toOwnedSlice(b.allocator);
 }
 
-fn readSourceFile(b: *std.Build, sub_path: []const u8) []const u8 {
-    b.dependOnFileContents(b.path(sub_path));
-    return b.root.root_dir.handle.readFileAlloc(
-        b.graph.io,
-        sub_path,
-        b.allocator,
-        .limited(4 * 1024 * 1024),
-    ) catch |err| std.debug.panic("failed to read {s}: {t}", .{ sub_path, err });
-}
-
 fn extractLdsExports(allocator: std.mem.Allocator, lds_content: []const u8) [][]const u8 {
     var list: std.ArrayListUnmanaged([]const u8) = .empty;
     var lines = std.mem.splitScalar(u8, lds_content, '\n');
@@ -1303,13 +1287,13 @@ fn stringLessThan(_: void, a: []const u8, b: []const u8) bool {
 
 fn verifyVersionScript(
     b: *std.Build,
-    header_path: []const u8,
-    script_path: []const u8,
+    comptime header_path: []const u8,
+    comptime script_path: []const u8,
     macro_name: []const u8,
     exclude: []const []const u8,
 ) void {
-    const header_content = readSourceFile(b, header_path);
-    const script_content = readSourceFile(b, script_path);
+    const header_content = @embedFile(header_path);
+    const script_content = @embedFile(script_path);
 
     const header_fns = extractHeaderExports(b.allocator, header_content, macro_name, exclude);
     const script_fns = extractLdsExports(b.allocator, script_content);
@@ -1350,11 +1334,11 @@ fn hasFunctionCall(source_content: []const u8, fn_name: []const u8) bool {
 
 fn verifyLinktestCalls(
     b: *std.Build,
-    script_path: []const u8,
-    source_path: []const u8,
+    comptime script_path: []const u8,
+    comptime source_path: []const u8,
 ) void {
-    const script_content = readSourceFile(b, script_path);
-    const source_content = readSourceFile(b, source_path);
+    const script_content = @embedFile(script_path);
+    const source_content = @embedFile(source_path);
     const script_fns = extractLdsExports(b.allocator, script_content);
 
     for (script_fns) |fn_name| {
@@ -1369,10 +1353,10 @@ fn verifyLinktestCalls(
 
 fn verifyRecordingSources(
     b: *std.Build,
-    record_lib_path: []const u8,
+    comptime record_lib_path: []const u8,
     c_sources: []const []const u8,
 ) void {
-    const content = readSourceFile(b, record_lib_path);
+    const content = @embedFile(record_lib_path);
     for (c_sources) |src| {
         const needle = std.fmt.allocPrint(b.allocator, "#include \"../../../{s}\"", .{src}) catch @panic("OOM");
         if (std.mem.indexOf(u8, content, needle) == null) {
