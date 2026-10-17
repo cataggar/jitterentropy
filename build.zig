@@ -74,7 +74,21 @@ const BuildOptions = struct {
 };
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    var target = b.standardTargetOptions(.{});
+    if (target.query.isNative() and target.result.os.tag == .linux and target.result.isGnuLibC()) {
+        if (std.zig.system.resolveTargetQuery(b.graph.io, .{ .os_version_min = .{ .none = {} } })) |real_host| {
+            if (real_host.os.version_range.linux.glibc.order(target.result.os.version_range.linux.glibc) == .lt) {
+                target = b.resolveTargetQuery(.{
+                    .cpu_arch = real_host.cpu.arch,
+                    .cpu_model = .native,
+                    .os_tag = .linux,
+                    .abi = real_host.abi,
+                    .glibc_version = real_host.os.version_range.linux.glibc,
+                    .dynamic_linker = real_host.dynamic_linker,
+                });
+            }
+        } else |_| {}
+    }
     const optimize = b.standardOptimizeOption(.{});
 
     const linkage = b.option(
@@ -1182,13 +1196,22 @@ pub fn build(b: *std.Build) void {
             \\else
             \\  parse_errors=all
             \\fi
+            \\ignore_errors=""
+            \\if gcovr --gcov-ignore-errors=no_working_dir_found --version >/dev/null 2>&1; then
+            \\  ignore_errors="--gcov-ignore-errors=no_working_dir_found"
+            \\fi
+            \\exclude_tests=""
+            \\if compgen -G "src/*.c" >/dev/null; then
+            \\  exclude_tests='--exclude "tests/"'
+            \\fi
             \\eval gcovr \
             \\  --root . \
             \\  .zig-cache \
             \\  $gcov_tool \
+            \\  $ignore_errors \
             \\  --gcov-ignore-parse-errors "$parse_errors" \
             \\  --merge-mode-functions merge-use-line-min \
-            \\  --exclude "tests/" \
+            \\  $exclude_tests \
             \\  --exclude "linux_kernel/" \
             \\  --html-details zig-out/coverage/index.html \
             \\  --print-summary
