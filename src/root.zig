@@ -1,6 +1,11 @@
 const std = @import("std");
-pub const internal = @import("internal.zig");
+pub const internal = @import("internal");
+pub const health = @import("health");
 pub const build_options = internal.build_options;
+
+comptime {
+    std.testing.refAllDecls(health);
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +153,5 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(health);
 }

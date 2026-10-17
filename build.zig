@@ -9,7 +9,6 @@ const jitterentropy_version = std.SemanticVersion{
 const lib_c_sources: []const []const u8 = &.{
     "src/jitterentropy-base.c",
     "src/jitterentropy-gcd.c",
-    "src/jitterentropy-health.c",
     "src/jitterentropy-noise.c",
     "src/jitterentropy-sha3.c",
     "src/jitterentropy-status.c",
@@ -248,9 +247,24 @@ pub fn build(b: *std.Build) void {
     const os_tag = target.result.os.tag;
     const c_flags = getCFlags(b, target, opts, &.{}) catch @panic("OOM");
 
+    const core_internal_mod = b.createModule(.{
+        .root_source_file = b.path("src/internal.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    core_internal_mod.addOptions("build_options", build_options);
+    const core_health_mod = b.createModule(.{
+        .root_source_file = b.path("src/health.zig"),
+        .target = target,
+        .optimize = .Debug,
+    });
+    core_health_mod.addImport("internal", core_internal_mod);
+
     const zig_core_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
     zig_core_mod.root_source_file = b.path("src/root.zig");
     zig_core_mod.addOptions("build_options", build_options);
+    zig_core_mod.addImport("internal", core_internal_mod);
+    zig_core_mod.addImport("health", core_health_mod);
     configureIncludePaths(b, zig_core_mod);
     configureCommonDefines(b, zig_core_mod, target, opts, .static, false);
     const zig_core_lib = b.addLibrary(.{
@@ -264,6 +278,20 @@ pub fn build(b: *std.Build) void {
     const zig_core_mock_mod = createCModule(b, target, optimize, mock_opts, if (os_tag == .windows) null else true);
     zig_core_mock_mod.root_source_file = b.path("src/root.zig");
     zig_core_mock_mod.addOptions("build_options", mock_build_options);
+    const mock_internal_mod = b.createModule(.{
+        .root_source_file = b.path("src/internal.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    mock_internal_mod.addOptions("build_options", mock_build_options);
+    const mock_health_mod = b.createModule(.{
+        .root_source_file = b.path("src/health.zig"),
+        .target = target,
+        .optimize = .Debug,
+    });
+    mock_health_mod.addImport("internal", mock_internal_mod);
+    zig_core_mock_mod.addImport("internal", mock_internal_mod);
+    zig_core_mock_mod.addImport("health", mock_health_mod);
     configureIncludePaths(b, zig_core_mock_mod);
     configureCommonDefines(b, zig_core_mock_mod, target, mock_opts, .static, false);
     const zig_core_mock_lib = b.addLibrary(.{
@@ -275,6 +303,8 @@ pub fn build(b: *std.Build) void {
     const lib_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
     lib_mod.root_source_file = b.path("src/root.zig");
     lib_mod.addOptions("build_options", build_options);
+    lib_mod.addImport("internal", core_internal_mod);
+    lib_mod.addImport("health", core_health_mod);
     configureIncludePaths(b, lib_mod);
     configureCommonDefines(b, lib_mod, target, opts, linkage, true);
     configureSystemLibraries(lib_mod, target, opts);
@@ -337,6 +367,8 @@ pub fn build(b: *std.Build) void {
         const rec_mod = createCModule(b, target, optimize, opts, if (os_tag == .windows) null else true);
         rec_mod.root_source_file = b.path("src/root.zig");
         rec_mod.addOptions("build_options", build_options);
+        rec_mod.addImport("internal", core_internal_mod);
+        rec_mod.addImport("health", core_health_mod);
         configureIncludePaths(b, rec_mod);
         rec_mod.addIncludePath(b.path("tests/raw-entropy/recording_library"));
         configureCommonDefines(b, rec_mod, target, opts, linkage, false);
@@ -526,11 +558,19 @@ pub fn build(b: *std.Build) void {
     }, false, false);
     configureCryptoLibraries(gcd_exe.root_module, opts);
 
-    const health_exe = addAbsorbingExecutable(b, "jitterentropy-health", target, optimize, opts, zig_core_lib, c_flags, &.{
-        "tests/health/health.c",
-        "src/jitterentropy-health.c",
-        "arch/jitterentropy-arch-atomic.c",
-    }, false, false);
+    const health_cli_mod = createCModule(b, target, .Debug, opts, null);
+    health_cli_mod.root_source_file = b.path("tests/health/health.zig");
+    health_cli_mod.addImport("health", core_health_mod);
+    configureIncludePaths(b, health_cli_mod);
+    configureCommonDefines(b, health_cli_mod, target, opts, .static, false);
+    health_cli_mod.addCSourceFile(.{
+        .file = b.path("arch/jitterentropy-arch-atomic.c"),
+        .flags = c_flags,
+    });
+    const health_exe = b.addExecutable(.{
+        .name = "jitterentropy-health",
+        .root_module = health_cli_mod,
+    });
 
     const flags_exe = addToolExecutable(
         b,
@@ -1009,6 +1049,8 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     zig_test_mod.addOptions("build_options", build_options);
+    zig_test_mod.addImport("internal", core_internal_mod);
+    zig_test_mod.addImport("health", core_health_mod);
     configureIncludePaths(b, zig_test_mod);
     configureCommonDefines(b, zig_test_mod, target, opts, .static, false);
     configureSystemLibraries(zig_test_mod, target, opts);
@@ -1081,17 +1123,20 @@ pub fn build(b: *std.Build) void {
     run_fuzz_api.expectExitCode(0);
     test_step.dependOn(&run_fuzz_api.step);
 
-    const fuzz_health_mod = createCModule(b, target, optimize, opts, null);
-    fuzz_health_mod.linkLibrary(zig_core_lib);
+    const fuzz_health_impl_mod = b.createModule(.{
+        .root_source_file = b.path("tests/fuzz/fuzz_health.zig"),
+        .target = target,
+        .optimize = .Debug,
+    });
+    fuzz_health_impl_mod.addImport("health", core_health_mod);
+
+    const fuzz_health_mod = createCModule(b, target, .Debug, opts, null);
+    fuzz_health_mod.root_source_file = b.path("tests/fuzz/fuzz_health_standalone.zig");
+    fuzz_health_mod.addImport("fuzz_health", fuzz_health_impl_mod);
     configureIncludePaths(b, fuzz_health_mod);
     configureCommonDefines(b, fuzz_health_mod, target, opts, .static, false);
-    fuzz_health_mod.addCMacro("JENT_FUZZ_STANDALONE", "1");
-    fuzz_health_mod.addCSourceFiles(.{
-        .files = &.{
-            "tests/fuzz/fuzz-health.c",
-            "src/jitterentropy-health.c",
-            "arch/jitterentropy-arch-atomic.c",
-        },
+    fuzz_health_mod.addCSourceFile(.{
+        .file = b.path("arch/jitterentropy-arch-atomic.c"),
         .flags = c_flags,
     });
     const fuzz_health_exe = b.addExecutable(.{
@@ -1133,16 +1178,23 @@ pub fn build(b: *std.Build) void {
         run_fuzz_api_fuzzer.expectExitCode(0);
         test_step.dependOn(&run_fuzz_api_fuzzer.step);
 
+        const fuzz_health_lib_mod = createCModule(b, target, .Debug, opts, null);
+        fuzz_health_lib_mod.root_source_file = b.path("tests/fuzz/fuzz_health.zig");
+        fuzz_health_lib_mod.addImport("health", core_health_mod);
+        configureIncludePaths(b, fuzz_health_lib_mod);
+        configureCommonDefines(b, fuzz_health_lib_mod, target, opts, .static, false);
+        const fuzz_health_lib = b.addLibrary(.{
+            .name = "fuzz-health-harness",
+            .linkage = .static,
+            .root_module = fuzz_health_lib_mod,
+        });
+
         const fuzz_health_fuzzer_mod = createCModule(b, target, optimize, opts, null);
-        fuzz_health_fuzzer_mod.linkLibrary(zig_core_lib);
+        fuzz_health_fuzzer_mod.linkLibrary(fuzz_health_lib);
         configureIncludePaths(b, fuzz_health_fuzzer_mod);
         configureCommonDefines(b, fuzz_health_fuzzer_mod, target, opts, .static, false);
-        fuzz_health_fuzzer_mod.addCSourceFiles(.{
-            .files = &.{
-                "tests/fuzz/fuzz-health.c",
-                "src/jitterentropy-health.c",
-                "arch/jitterentropy-arch-atomic.c",
-            },
+        fuzz_health_fuzzer_mod.addCSourceFile(.{
+            .file = b.path("arch/jitterentropy-arch-atomic.c"),
             .flags = c_flags,
         });
         fuzz_health_fuzzer_mod.addCSourceFile(.{
@@ -1820,6 +1872,30 @@ fn addEfiTargets(b: *std.Build) void {
             .stack_check = false,
             .stack_protector = false,
         });
+        const efi_build_options = b.addOptions();
+        efi_build_options.addOption(bool, "internal_timer", true);
+        efi_build_options.addOption(bool, "mock_timer", false);
+        efi_build_options.addOption(bool, "raw_memory_access", false);
+        efi_build_options.addOption(bool, "stack_protector", false);
+        efi_build_options.addOption(std.builtin.LinkMode, "linkage", .static);
+        const efi_internal_mod = b.createModule(.{
+            .root_source_file = b.path("src/internal.zig"),
+            .target = uefi_target,
+            .optimize = .Debug,
+        });
+        efi_internal_mod.addOptions("build_options", efi_build_options);
+        const efi_health_mod = b.createModule(.{
+            .root_source_file = b.path("src/health.zig"),
+            .target = uefi_target,
+            .optimize = .Debug,
+        });
+        efi_health_mod.addImport("internal", efi_internal_mod);
+        const efi_health_lib = b.addLibrary(.{
+            .name = b.fmt("jitterentropy-health-{s}", .{@tagName(spec.arch)}),
+            .linkage = .static,
+            .root_module = efi_health_mod,
+        });
+        efi_mod.linkLibrary(efi_health_lib);
         efi_mod.addIncludePath(efi_inc_dir);
         configureIncludePaths(b, efi_mod);
         efi_mod.addCMacro("JENT_CONF_ENABLE_INTERNAL_TIMER", "1");

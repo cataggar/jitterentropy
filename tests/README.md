@@ -75,10 +75,10 @@ outside the buffer a call was given, a read that delivers the full length or a
 documented negative code, misuse reported rather than acted on - and a failed
 assertion is what the fuzzer records as a crash.
 
-`fuzz-health.c` drives the SP800-90B health tests over time stamps the fuzzer
+`fuzz_health.zig` drives the SP800-90B health tests over time stamps the fuzzer
 chooses, through `jent_health_insert_timestamp()`. That entry point is
-internal, so this one absorbs `src/jitterentropy-health.c` as `tests/health`
-and the unit tests do. It exists because `fuzz-api` cannot search: every
+internal, so this one imports `src/health.zig` directly. It exists because
+`fuzz-api` cannot search: every
 operation there allocates a collector or generates from one, so it measures the
 machine's real timer, and a coverage-guided run manages single-digit executions
 per second. Nothing in `fuzz-health` measures anything, and it runs about a
@@ -154,7 +154,7 @@ Two entry points judge time stamps the library did not measure itself.
 it, forming the delta exactly as the noise source does. That is what a raw
 entropy recording is replayed through: the same code that will judge the noise
 source at runtime, reaching the same verdict on the same numbers. It is
-internal, not exported, so a replay absorbs `src/jitterentropy-health.c` as
+internal, not exported, so a replay imports `src/health.zig` directly as
 `tests/health` does, but needs no special build. Note that the first stamp is a delta
 against whatever the collector last measured, so a replay should either discard
 its first result or insert the first stamp of the recording twice.
@@ -247,7 +247,7 @@ jitterentropy-health [osr]
 ## Recomputing the cutoffs
 
 The cutoffs the tests above are driven to are lookup tables in
-`src/jitterentropy-health.c`, one entry per oversampling rate, plus the two
+`src/health.zig`, one entry per oversampling rate, plus the two
 macros in `src/jitterentropy-health.h` that state the RCT cutoff, which is
 linear in that rate. All of them come out of the window size and the false
 positive rate alpha, and `tests/health/cutoffs.py` computes them with mpmath:
@@ -262,7 +262,7 @@ python3 tests/health/cutoffs.py            # print the cutoffs as C
 python3 tests/health/cutoffs.py --check    # compare against the source
 ```
 
-`--check` compares against `src/jitterentropy-health.c`, or against the file
+`--check` compares against `src/health.zig`, or against the file
 given after it (`--check FILE`), and exits non-zero on a mismatch; it takes
 about ten seconds. `--table NAME`, repeatable, restricts either to the lookup
 table of that name in the source (`jent_apt_cutoff_lookup`, say), leaving out
