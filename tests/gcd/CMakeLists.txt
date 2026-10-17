@@ -4,7 +4,6 @@
 add_executable(gcd
     gcd.c
     ../../src/jitterentropy-gcd.c
-    ../../arch/jitterentropy-arch-memory.c
     # The establish-once semantics of the common timer GCD go through the
     # atomic accessors, which are a translation unit of their own.
     ../../arch/jitterentropy-arch-atomic.c)

@@ -21,9 +21,8 @@
  */
 
 /*
- * jitterentropy-arch-memory.c is absorbed below, after the atomic accessors
- * have pulled in the system headers: its own feature macros come too late for
- * MAP_ANON on glibc under -std=c11. Stated once up front.
+ * Absorbed architecture sources define their feature macros after unit.h has
+ * already pulled in system headers. State the GNU feature set once up front.
  */
 #ifdef __linux__
 #define _GNU_SOURCE

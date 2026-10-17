@@ -1,6 +1,20 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
 pub const build_options = internal.build_options;
+pub const arch_memory = @import("arch/memory.zig");
+
+comptime {
+    _ = &arch_memory.jent_secure_memzero;
+    _ = &arch_memory.jent_memset_secure;
+    _ = &arch_memory.jent_secure_memory_supported;
+    _ = &arch_memory.jent_memory_is_secure;
+    _ = &arch_memory.jent_memory_backend_name;
+    _ = &arch_memory.jent_pagesize;
+    _ = &arch_memory.jent_fi_real_zalloc;
+    _ = &arch_memory.jent_zalloc;
+    _ = &arch_memory.jent_zalloc_unlocked;
+    _ = &arch_memory.jent_zfree;
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +162,5 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(arch_memory);
 }

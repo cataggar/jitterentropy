@@ -45,9 +45,9 @@
  * Secure memory is memory that is zeroized when it is freed, and every backend
  * below provides it. Locking it into RAM and excluding it from core dumps are
  * extras that only some backends provide - see
- * arch/jitterentropy-arch-memory.c for which.
+ * src/arch/memory.zig for which.
  *
- * Provides (defined in arch/jitterentropy-arch-memory.c):
+ * Provides (defined in src/arch/memory.zig):
  *   - jent_zalloc(len, flags): allocate zeroed secure memory, with the extras
  *     where the backend offers them (mlock, VirtualLock, libgcrypt secmem,
  *     OpenSSL secure heap, ...). Of the collector flags only
@@ -65,12 +65,9 @@
  *     memory - always, as every backend wipes on free.
  *
  * The dispatch order is:
- *   - LIBGCRYPT     -> gcry_malloc_secure / gcry_free, wiped before free
- *   - AWSLC         -> OPENSSL_malloc / OPENSSL_free, wiped before free, as
- *                      OPENSSL_free() does not wipe for an application's
- *                      own allocator; no extras, so JENT_FORCE_SECURE_MEM is
- *                      not refused
- *   - OPENSSL       -> OPENSSL_secure_malloc / OPENSSL_secure_free
+ *   - LIBGCRYPT     -> gcry_calloc_secure / gcry_free, wiped before free
+ *   - AWSLC/OPENSSL -> OPENSSL_secure_zalloc /
+ *                      OPENSSL_secure_clear_free
  *   - Windows       -> VirtualAlloc + VirtualLock with PAGE_NOACCESS guard
  *                      pages around the payload
  *   - Linux/BSD/Mac -> mmap + mlock with PROT_NONE guard pages around the
@@ -87,9 +84,9 @@
  * The crypto library backends use the library's allocator as it is: no memory
  * lock and no core dump exclusion is added around it here.
  *
- * Four backends can be refused their extras at runtime: the two mlock ones
- * when the operating system refuses the lock, libgcrypt and OpenSSL when
- * their secure arena is absent or exhausted. All four then fall back to
+ * The mlock backends can be refused their extras at runtime when the operating
+ * system refuses the lock, as can the external crypto backends when their
+ * secure arena is absent or exhausted. They then fall back to
  * memory without them - still wiped on free - unless JENT_FORCE_SECURE_MEM
  * makes the same situation fail the allocation. Only that differs - the guard pages and the dump exclusion
  * are established either way, and the free path tells the two kinds of pointer

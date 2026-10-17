@@ -46,7 +46,7 @@
  * or =OPENSSL build: libgcrypt's secmem pool and OpenSSL's secure heap are
  * created once per process, in a size that cannot be changed afterwards and
  * that every other user of those libraries then shares. The library only
- * checks that the arena is there (see arch/jitterentropy-arch-memory.c);
+ * checks that the arena is there (see src/arch/memory.zig);
  * creating it, like raising the limits, belongs to whoever owns the process -
  * here, these test tools.
  */

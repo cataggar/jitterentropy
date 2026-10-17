@@ -38,25 +38,10 @@
 #include <errno.h>
 #include <stdlib.h>
 
-/*
- * Which system calls there are to interpose is decided inside the arch/
- * sources, and the renaming has to be in place before they are included - so
- * their platform selection cannot be read here, only repeated. See the same
- * block in unit-fault.c, which carries the reasoning in full.
- */
 #if defined(_MSC_VER) || defined(__MINGW32__)
 # define FI_WINDOWS
 #endif
 
-/*
- * The kernel calls the secure allocator makes, interposed the same way. They
- * are what fails when the machine is out of memory or will not lock any more
- * of it - RLIMIT_MEMLOCK in a container, the working set quota on Windows -
- * and none of those failures can be produced by asking nicely.
- *
- * The system headers are included before the names are taken over, so the
- * declarations the redirections shadow are already in place.
- */
 #ifdef FI_WINDOWS
 # include <windows.h>
 #else
@@ -64,90 +49,6 @@
 # include <unistd.h>
 #endif
 
-static int fi_fail_mmap;
-static int fi_fail_mprotect;
-static int fi_fail_mlock;
-
-#ifdef FI_WINDOWS
-
-static JENT_UT_MAYBE_UNUSED LPVOID fi_VirtualAlloc(LPVOID addr, SIZE_T len,
-						   DWORD type, DWORD protect)
-{
-	if (fi_fail_mmap) {
-		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-		return NULL;
-	}
-	return VirtualAlloc(addr, len, type, protect);
-}
-
-static JENT_UT_MAYBE_UNUSED BOOL fi_VirtualProtect(LPVOID addr, SIZE_T len,
-						   DWORD protect, PDWORD old)
-{
-	if (fi_fail_mprotect) {
-		SetLastError(ERROR_INVALID_ADDRESS);
-		return FALSE;
-	}
-	return VirtualProtect(addr, len, protect, old);
-}
-
-static JENT_UT_MAYBE_UNUSED BOOL fi_VirtualLock(LPVOID addr, SIZE_T len)
-{
-	if (fi_fail_mlock) {
-		SetLastError(ERROR_WORKING_SET_QUOTA);
-		return FALSE;
-	}
-	return VirtualLock(addr, len);
-}
-
-#else /* FI_WINDOWS */
-
-static int fi_mlock_errno = EPERM;
-
-static JENT_UT_MAYBE_UNUSED void *fi_mmap(void *addr, size_t len, int prot,
-					  int flags, int fd, off_t off)
-{
-	if (fi_fail_mmap) {
-		errno = ENOMEM;
-		return MAP_FAILED;
-	}
-	return mmap(addr, len, prot, flags, fd, off);
-}
-
-static JENT_UT_MAYBE_UNUSED int fi_mprotect(void *addr, size_t len, int prot)
-{
-	if (fi_fail_mprotect) {
-		errno = EACCES;
-		return -1;
-	}
-	return mprotect(addr, len, prot);
-}
-
-static JENT_UT_MAYBE_UNUSED int fi_mlock(const void *addr, size_t len)
-{
-	if (fi_fail_mlock) {
-		errno = fi_mlock_errno;
-		return -1;
-	}
-	return mlock(addr, len);
-}
-
-#endif /* FI_WINDOWS */
-
-/*
- * Compile the real allocator under a private name, with its kernel calls
- * redirected. The header it includes declares jent_zalloc(), which is renamed
- * with it, so the declaration and the definition still agree.
- */
-#define jent_zalloc jent_fi_real_zalloc
-#ifdef FI_WINDOWS
-# define VirtualAlloc fi_VirtualAlloc
-# define VirtualProtect fi_VirtualProtect
-# define VirtualLock fi_VirtualLock
-#else
-# define mmap fi_mmap
-# define mprotect fi_mprotect
-# define mlock fi_mlock
-#endif
 #include "arch/jitterentropy-arch-compat.h"
 #include "jitterentropy-internal.h"
 #include "jitterentropy-base.h"
@@ -159,36 +60,11 @@ static JENT_UT_MAYBE_UNUSED int fi_mlock(const void *addr, size_t len)
 #include "jitterentropy-uuid.h"
 #include "arch/jitterentropy-arch-thread.h"
 
-#include "jitterentropy-arch-memory.c"
-#ifdef FI_WINDOWS
-# undef VirtualLock
-# undef VirtualProtect
-# undef VirtualAlloc
-#else
-# undef mlock
-# undef mprotect
-# undef mmap
-#endif
-#undef jent_zalloc
+extern unsigned int jent_fi_fail_alloc;
+extern unsigned int jent_fi_alloc_count;
 
-/*
- * Fail the n-th allocation from now on, counting from 1. Zero disables the
- * injection. Only one allocation is failed per arming, so that the collector
- * is built up to a chosen point and only then denied its next allocation -
- * which is what walks the cleanup paths one stage at a time.
- */
-static unsigned int fi_fail_alloc;
-static unsigned int fi_alloc_count;
-
-void *jent_zalloc(size_t len, unsigned int flags)
-{
-	fi_alloc_count++;
-
-	if (fi_fail_alloc && fi_alloc_count == fi_fail_alloc)
-		return NULL;
-
-	return jent_fi_real_zalloc(len, flags);
-}
+#define fi_fail_alloc jent_fi_fail_alloc
+#define fi_alloc_count jent_fi_alloc_count
 
 /*
  * Only the cases behind JENT_CONF_ENABLE_INTERNAL_TIMER arm the injection -
@@ -206,7 +82,6 @@ static JENT_UT_MAYBE_UNUSED void fi_disarm(void)
 	fi_fail_alloc = 0;
 	fi_alloc_count = 0;
 }
-
 
 /*
  * The system queries the platform backends build their answers from. Each has

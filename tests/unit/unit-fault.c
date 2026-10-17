@@ -27,13 +27,9 @@
  * free or a half-built collector, in code that only runs when the system is
  * already under stress.
  *
- * The allocator is interposed rather than the library being given a test hook.
- * These programs absorb the library sources (see CMakeLists.txt here), so
- * renaming jent_zalloc() through the preprocessor while
- * arch/jitterentropy-arch-memory.c is compiled hides that definition under a
- * private name and lets this file supply jent_zalloc() itself. Every absorbed
- * caller reaches the interposed one, and the shipped library carries no
- * testing conditional.
+ * The Zig secure-memory backend exports fault-injection controls. They keep
+ * the production allocation path intact while allowing this executable to
+ * exercise otherwise unreachable failures.
  */
 
 #ifdef __linux__
@@ -44,143 +40,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
-
-/*
- * Which system calls there are to interpose is decided inside the arch/
- * sources, and the renaming has to be in place before they are included - so
- * their platform selection cannot be read here, only repeated. This is the
- * first line of arch/jitterentropy-arch-memory.c's dispatch and of every other
- * one in arch/: Windows has no mmap()/mlock() and no sysconf(), and its
- * backends are built on the Win32 calls instead.
- */
-#if defined(_MSC_VER) || defined(__MINGW32__)
-# define FI_WINDOWS
-#endif
-
-/*
- * The kernel calls the secure allocator makes, interposed the same way. They
- * are what fails when the machine is out of memory or will not lock any more
- * of it - RLIMIT_MEMLOCK in a container, the working set quota on Windows -
- * and none of those failures can be produced by asking nicely.
- *
- * The system headers are included before the names are taken over, so the
- * declarations the redirections shadow are already in place.
- */
-#ifdef FI_WINDOWS
-# include <windows.h>
-#else
-# include <sys/mman.h>
-# include <unistd.h>
-#endif
-
-/*
- * One set of switches for both backends: the mapping call, the protection
- * call and the memory lock, whatever the platform names them.
- */
-static int fi_fail_mmap;
-static int fi_fail_mprotect;
-static unsigned int fi_mprotect_calls;
-static int fi_fail_mlock;
-
-#ifdef FI_WINDOWS
-
-static JENT_UT_MAYBE_UNUSED LPVOID fi_VirtualAlloc(LPVOID addr, SIZE_T len,
-						   DWORD type, DWORD protect)
-{
-	if (fi_fail_mmap) {
-		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-		return NULL;
-	}
-	return VirtualAlloc(addr, len, type, protect);
-}
-
-static JENT_UT_MAYBE_UNUSED BOOL fi_VirtualProtect(LPVOID addr, SIZE_T len,
-						   DWORD protect, PDWORD old)
-{
-	fi_mprotect_calls++;
-	if (fi_fail_mprotect &&
-	    (unsigned int)fi_fail_mprotect == fi_mprotect_calls) {
-		SetLastError(ERROR_INVALID_ADDRESS);
-		return FALSE;
-	}
-	return VirtualProtect(addr, len, protect, old);
-}
-
-/*
- * The one refusal that is expected on a healthy machine: VirtualLock() charges
- * its pages against the process minimum working set and reports
- * ERROR_WORKING_SET_QUOTA once that budget is gone. Unlike mlock() there is no
- * second class of failure to distinguish, so the allocator tolerates every one
- * of them unless the caller demanded secure memory - which is why this needs
- * no equivalent of fi_mlock_errno below.
- */
-static JENT_UT_MAYBE_UNUSED BOOL fi_VirtualLock(LPVOID addr, SIZE_T len)
-{
-	if (fi_fail_mlock) {
-		SetLastError(ERROR_WORKING_SET_QUOTA);
-		return FALSE;
-	}
-	return VirtualLock(addr, len);
-}
-
-#else /* FI_WINDOWS */
-
-static int fi_mlock_errno = EPERM;
-
-static JENT_UT_MAYBE_UNUSED void *fi_mmap(void *addr, size_t len, int prot,
-					  int flags, int fd, off_t off)
-{
-	if (fi_fail_mmap) {
-		errno = ENOMEM;
-		return MAP_FAILED;
-	}
-	return mmap(addr, len, prot, flags, fd, off);
-}
-
-static JENT_UT_MAYBE_UNUSED int fi_mprotect(void *addr, size_t len, int prot)
-{
-	fi_mprotect_calls++;
-	if (fi_fail_mprotect &&
-	    (unsigned int)fi_fail_mprotect == fi_mprotect_calls) {
-		errno = EACCES;
-		return -1;
-	}
-	return mprotect(addr, len, prot);
-}
-
-static JENT_UT_MAYBE_UNUSED int fi_mlock(const void *addr, size_t len)
-{
-	if (fi_fail_mlock) {
-		errno = fi_mlock_errno;
-		return -1;
-	}
-	return mlock(addr, len);
-}
-
-#endif /* FI_WINDOWS */
-
-/*
- * Compile the real allocator under a private name, with its kernel calls
- * redirected. The header it includes declares jent_zalloc(), which is renamed
- * with it, so the declaration and the definition still agree.
- */
-#define jent_zalloc jent_fi_real_zalloc
-#ifdef FI_WINDOWS
-# define VirtualAlloc fi_VirtualAlloc
-# define VirtualProtect fi_VirtualProtect
-# define VirtualLock fi_VirtualLock
-#else
-# define mmap fi_mmap
-# define mprotect fi_mprotect
-# define mlock fi_mlock
-#endif
-/*
- * The atomic accessors of the process-wide state. Absorbed ahead of
- * everything else because it depends on nothing else and nearly everything
- * else depends on it - see arch/jitterentropy-arch-atomic.h.
- */
 #include "arch/jitterentropy-arch-compat.h"
-#include <errno.h>
 #include "jitterentropy-internal.h"
 #include "jitterentropy-base.h"
 #include "jitterentropy-gcd.h"
@@ -191,31 +51,43 @@ static JENT_UT_MAYBE_UNUSED int fi_mlock(const void *addr, size_t len)
 #include "jitterentropy-uuid.h"
 #include "arch/jitterentropy-arch-thread.h"
 
-#include "jitterentropy-arch-memory.c"
-
-/*
- * Whether the library places its memory itself, through the mapping backends
- * the interposers above reach. An external crypto library allocates from its
- * own secure heap instead, which nothing here can make fail.
- */
-#if !defined(LIBGCRYPT) && !defined(OPENSSL) && !defined(AWSLC)
-# ifdef JENT_ARCH_MEM_POSIX_MLOCK
-#  define FI_MEM_POSIX
-# elif defined(JENT_ARCH_MEM_WINDOWS)
-#  define FI_MEM_WINDOWS
-# endif
+#if defined(_MSC_VER) || defined(__MINGW32__)
+# define FI_WINDOWS
 #endif
 
 #ifdef FI_WINDOWS
-# undef VirtualLock
-# undef VirtualProtect
-# undef VirtualAlloc
+# include <windows.h>
 #else
-# undef mlock
-# undef mprotect
-# undef mmap
+# include <sys/mman.h>
+# include <unistd.h>
 #endif
-#undef jent_zalloc
+
+extern unsigned int jent_fi_fail_alloc;
+extern unsigned int jent_fi_alloc_count;
+extern int jent_fi_fail_mmap;
+extern int jent_fi_fail_mprotect;
+extern unsigned int jent_fi_mprotect_calls;
+extern int jent_fi_fail_mlock;
+extern int jent_fi_mlock_errno;
+extern int jent_fi_sysconf_mode;
+extern void *jent_fi_real_zalloc(size_t len, unsigned int flags);
+extern size_t jent_pagesize(void);
+
+#define fi_fail_alloc jent_fi_fail_alloc
+#define fi_alloc_count jent_fi_alloc_count
+#define fi_fail_mmap jent_fi_fail_mmap
+#define fi_fail_mprotect jent_fi_fail_mprotect
+#define fi_mprotect_calls jent_fi_mprotect_calls
+#define fi_fail_mlock jent_fi_fail_mlock
+#define fi_mlock_errno jent_fi_mlock_errno
+
+#if !defined(LIBGCRYPT) && !defined(OPENSSL) && !defined(AWSLC)
+# ifdef FI_WINDOWS
+#  define FI_MEM_WINDOWS
+# else
+#  define FI_MEM_POSIX
+# endif
+#endif
 
 /*
  * Fail the n-th allocation from now on, counting from 1. Zero disables the
@@ -223,19 +95,6 @@ static JENT_UT_MAYBE_UNUSED int fi_mlock(const void *addr, size_t len)
  * is built up to a chosen point and only then denied its next allocation -
  * which is what walks the cleanup paths one stage at a time.
  */
-static unsigned int fi_fail_alloc;
-static unsigned int fi_alloc_count;
-
-void *jent_zalloc(size_t len, unsigned int flags)
-{
-	fi_alloc_count++;
-
-	if (fi_fail_alloc && fi_alloc_count == fi_fail_alloc)
-		return NULL;
-
-	return jent_fi_real_zalloc(len, flags);
-}
-
 static void fi_arm(unsigned int nth)
 {
 	fi_fail_alloc = nth;
@@ -1139,12 +998,12 @@ static void test_allocator_bounds(void)
 	 * itself.
 	 */
 #ifdef FI_MEM_POSIX
-	fi_sysconf_mode = FI_SYSCONF_FAIL;
+	jent_fi_sysconf_mode = FI_SYSCONF_FAIL;
 	JENT_UT_TRUE(jent_pagesize() > 0,
 		     "an unreportable page size falls back to a usable one");
-	fi_sysconf_mode = FI_SYSCONF_ZERO;
+	jent_fi_sysconf_mode = FI_SYSCONF_ZERO;
 	JENT_UT_TRUE(jent_pagesize() > 0, "and so does a page size of zero");
-	fi_sysconf_mode = FI_SYSCONF_REAL;
+	jent_fi_sysconf_mode = FI_SYSCONF_REAL;
 #else
 	JENT_UT_SKIP("the page size fallback",
 		     "not the mmap/mlock backend of the library itself");
