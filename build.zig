@@ -20,10 +20,8 @@ const lib_c_sources: []const []const u8 = &.{
     "arch/jitterentropy-arch-fips.c",
     "arch/jitterentropy-arch-memory.c",
     "arch/jitterentropy-arch-ncpu.c",
-    "arch/jitterentropy-arch-random.c",
     "arch/jitterentropy-arch-sched.c",
     "arch/jitterentropy-arch-thread.c",
-    "arch/jitterentropy-arch-timer.c",
 };
 
 const unit_test_names: []const []const u8 = &.{
@@ -34,7 +32,6 @@ const unit_test_names: []const []const u8 = &.{
     "unit-arch-memory",
     "unit-arch-ncpu",
     "unit-arch-sched",
-    "unit-arch-timer",
     "unit-uuid",
     "unit-base-api",
     "unit-base-config",
@@ -228,7 +225,7 @@ pub fn build(b: *std.Build) void {
     };
 
     if (enable_efi) {
-        addEfiTargets(b);
+        addEfiTargets(b, aarch64_nstime_register);
     }
 
     const build_options = b.addOptions();
@@ -237,6 +234,7 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "raw_memory_access", raw_memory_access);
     build_options.addOption(bool, "stack_protector", stack_protector);
     build_options.addOption(std.builtin.LinkMode, "linkage", linkage);
+    build_options.addOption(?[]const u8, "aarch64_nstime_register", aarch64_nstime_register);
 
     const mock_build_options = b.addOptions();
     mock_build_options.addOption(bool, "internal_timer", internal_timer);
@@ -244,6 +242,7 @@ pub fn build(b: *std.Build) void {
     mock_build_options.addOption(bool, "raw_memory_access", raw_memory_access);
     mock_build_options.addOption(bool, "stack_protector", stack_protector);
     mock_build_options.addOption(std.builtin.LinkMode, "linkage", .static);
+    mock_build_options.addOption(?[]const u8, "aarch64_nstime_register", aarch64_nstime_register);
 
     const os_tag = target.result.os.tag;
     const c_flags = getCFlags(b, target, opts, &.{}) catch @panic("OOM");
@@ -1042,6 +1041,22 @@ pub fn build(b: *std.Build) void {
     const run_zig_harness_tests = b.addRunArtifact(zig_harness_tests);
     test_step.dependOn(&run_zig_harness_tests.step);
 
+    const arch_timer_test_mod = b.createModule(.{
+        .root_source_file = b.path("tests/unit/unit_arch_timer.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    arch_timer_test_mod.addImport("test_harness", zig_harness_mod);
+    arch_timer_test_mod.linkLibrary(zig_core_lib);
+    configureSystemLibraries(arch_timer_test_mod, target, opts);
+    const arch_timer_test = b.addExecutable(.{
+        .name = "unit-arch-timer",
+        .root_module = arch_timer_test_mod,
+    });
+    const run_arch_timer_test = addSkipAwareTestRun(b, test_runner_exe, arch_timer_test, tsan_options);
+    test_step.dependOn(&run_arch_timer_test.step);
+
     for (unit_test_names) |ut_name| {
         const ut_exe = addUnitTestExecutable(b, ut_name, target, optimize, opts, zig_core_lib, c_flags, false);
         const run_ut = addSkipAwareTestRun(b, test_runner_exe, ut_exe, tsan_options);
@@ -1489,10 +1504,8 @@ fn excludedSourcesForUnitTest(name: []const u8) []const []const u8 {
             "arch/jitterentropy-arch-memory.c",
             "arch/jitterentropy-arch-ncpu.c",
             "arch/jitterentropy-arch-thread.c",
-            "arch/jitterentropy-arch-timer.c",
             "arch/jitterentropy-arch-cache.c",
             "arch/jitterentropy-arch-fips.c",
-            "arch/jitterentropy-arch-random.c",
         };
     }
     if (std.mem.eql(u8, name, "unit-notime")) {
@@ -1500,7 +1513,6 @@ fn excludedSourcesForUnitTest(name: []const u8) []const []const u8 {
             "arch/jitterentropy-arch-memory.c",
             "arch/jitterentropy-arch-ncpu.c",
             "arch/jitterentropy-arch-thread.c",
-            "arch/jitterentropy-arch-timer.c",
         };
     }
     return &.{};
@@ -1751,7 +1763,7 @@ fn verifyLinktestCalls(
     }
 }
 
-fn addEfiTargets(b: *std.Build) void {
+fn addEfiTargets(b: *std.Build, aarch64_nstime_register: ?[]const u8) void {
     const wf = b.addWriteFiles();
     _ = wf.add("include/efi.h", efi_h_source);
     _ = wf.add("include/efilib.h", efilib_h_source);
@@ -1820,6 +1832,30 @@ fn addEfiTargets(b: *std.Build) void {
             .stack_check = false,
             .stack_protector = false,
         });
+        const efi_build_options = b.addOptions();
+        efi_build_options.addOption(bool, "internal_timer", true);
+        efi_build_options.addOption(bool, "mock_timer", false);
+        efi_build_options.addOption(bool, "raw_memory_access", false);
+        efi_build_options.addOption(bool, "stack_protector", false);
+        efi_build_options.addOption(std.builtin.LinkMode, "linkage", .static);
+        efi_build_options.addOption(?[]const u8, "aarch64_nstime_register", aarch64_nstime_register);
+        const efi_core_mod = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = uefi_target,
+            .optimize = .Debug,
+            .link_libc = false,
+            .pic = true,
+            .red_zone = if (spec.arch == .x86_64) false else null,
+            .stack_check = false,
+            .stack_protector = false,
+        });
+        efi_core_mod.addOptions("build_options", efi_build_options);
+        const efi_core_lib = b.addLibrary(.{
+            .name = b.fmt("jitterentropy-zig-core-{s}", .{spec.boot_name}),
+            .linkage = .static,
+            .root_module = efi_core_mod,
+        });
+        efi_mod.linkLibrary(efi_core_lib);
         efi_mod.addIncludePath(efi_inc_dir);
         configureIncludePaths(b, efi_mod);
         efi_mod.addCMacro("JENT_CONF_ENABLE_INTERNAL_TIMER", "1");

@@ -44,7 +44,7 @@
  *
  * Provides jent_get_nstime(), which reads the highest-resolution counter
  * available on the target. Every backend is defined in
- * arch/jitterentropy-arch-timer.c; the dispatch order is:
+ * src/arch/timer.zig; the dispatch order is:
  *
  *   - Windows ARM / ARM64 (MSVC / MinGW) -> QueryPerformanceCounter()
  *   - ARM64, MSVC, JENT_BAREMETAL -> _ReadStatusReg(ARM64_CNTVCT)
@@ -85,7 +85,7 @@
  * entropy-collection core, which includes this file through
  * src/jitterentropy-internal.h and which linux_kernel/Kbuild.source compiles
  * at -O0, which kernel headers are not written for; see the note at the top
- * of arch/jitterentropy-arch-timer.c. The out-of-line call costs one
+ * of src/arch/timer.zig. The out-of-line call costs one
  * call/return per timestamp, which is constant overhead: it delays the
  * measurement uniformly rather than removing jitter from it, and the -O0
  * requirement exists to protect the measured loops, not the counter read.

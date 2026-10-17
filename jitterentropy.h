@@ -366,7 +366,7 @@ extern "C" {
  * and arch/jitterentropy-arch-atomic.c fails to compile without them.
  *
  * The time stamp is read from a counter instruction on x86, aarch64, PowerPC,
- * s390x, SPARC64, RISC-V and LoongArch (arch/jitterentropy-arch-timer.c). Any
+ * s390x, SPARC64, RISC-V and LoongArch (src/arch/timer.zig). Any
  * other architecture has no clock the library could read without an operating
  * system, and fails to compile unless JENT_CONF_ENABLE_INTERNAL_TIMER is set:
  * the internal timer then takes over, and the counting thread it needs comes

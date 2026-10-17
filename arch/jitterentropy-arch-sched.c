@@ -94,7 +94,7 @@
 /*
  * Windows on ARM. MSVC defines neither __aarch64__ nor __arm__, so without
  * these two macros the branch below did not match and a Windows-on-ARM build
- * emitted no yield hint at all - the same pair jitterentropy-arch-timer.c
+ * emitted no yield hint at all - the same pair src/arch/timer.zig
  * matches for its QueryPerformanceCounter back-end. The hint goes through the
  * intrinsic because MSVC rejects inline asm on ARM targets entirely. Clang in
  * MSVC mode declares no __yield() in <intrin.h> but defines __aarch64__ or

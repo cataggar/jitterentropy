@@ -74,7 +74,7 @@
  * memcpy()/memset() are used by the core itself (jitterentropy-base.c,
  * jitterentropy-noise.c, jitterentropy-sha3.c). They used to arrive here by
  * accident, dragged in behind <linux/timex.h> via the arch timer header; that
- * header now lives in arch/jitterentropy-arch-timer.c and the core no longer
+ * header now lives in src/arch/timer.zig and the core no longer
  * sees it, so the dependency is stated where it is actually used. <linux/
  * string.h> is itself fine at -O0 - it was already being compiled that way
  * through the transitive path this replaces.
@@ -216,7 +216,7 @@ static inline uint64_t jent_umod64(uint64_t dividend, uint64_t divisor)
  * before, and it only worked by accident: some other header had to define them
  * first for the guard to suppress ours. That held while <linux/timex.h> pulled
  * <linux/kernel.h> into every translation unit; once the timer backend moved
- * out (see arch/jitterentropy-arch-timer.c) our definitions landed first
+ * out (see src/arch/timer.zig) our definitions landed first
  * instead, and every file that later included a kernel header got a
  * "'ARRAY_SIZE' redefined" warning. A distinct name cannot collide in either
  * order, on any kernel, so no guard is needed.

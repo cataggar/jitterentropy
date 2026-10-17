@@ -45,7 +45,7 @@
  *
  * Provides jent_os_random_bytes(), and jent_os_random_supported() to ask
  * whether the platform has a backend behind it at all. Both are defined in
- * arch/jitterentropy-arch-random.c; the dispatch order is:
+ * src/arch/random.zig; the dispatch order is:
  *
  *   - Linux kernel              -> get_random_bytes()
  *   - Windows (MSVC / MinGW)    -> BCryptGenRandom()

@@ -265,7 +265,7 @@ M-mode emulates it.
 ## Direct CPU instructions
 
 If the high-resolution timer needed by jent_get_nstime is not available
-on your target, add a new branch to arch/jitterentropy-arch-timer.c: a
+on your target, add a new branch to src/arch/timer.zig: a
 `JENT_ARCH_TIMER_*` selection in its platform detection, guarded by the
 appropriate architecture macros, and the matching branch in
 `jent_get_nstime()`.

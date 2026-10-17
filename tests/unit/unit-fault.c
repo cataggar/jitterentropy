@@ -272,20 +272,6 @@ static unsigned int fi_count_allocs(void (*op)(void))
 #ifndef FI_WINDOWS
 #include <sched.h>
 #endif
-/*
- * The same glibc floor arch/jitterentropy-arch-random.c tests before reaching
- * for the header: <sys/random.h> and the getrandom() wrapper are glibc 2.25,
- * and on anything older the include is a build failure rather than a link
- * error. Below it the UUID backend takes its /dev/urandom path, where there is
- * no getrandom() call left to interpose, so the cases guarded by
- * FI_HAVE_GETRANDOM have nothing to do anyway.
- */
-#if defined(__linux__) && defined(__GLIBC__) && \
-    (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25))
-# include <sys/random.h>
-# define FI_HAVE_GETRANDOM
-#endif
-
 #ifndef FI_WINDOWS
 enum fi_sysconf_mode {
 	FI_SYSCONF_REAL = 0,
@@ -320,7 +306,8 @@ static long fi_sysconf(int name)
 }
 #endif /* FI_WINDOWS */
 
-static int fi_fail_getrandom;
+extern int jent_fi_fail_getrandom;
+#define fi_fail_getrandom jent_fi_fail_getrandom
 
 #ifdef __linux__
 static int fi_sched_getaffinity_real(pid_t pid, size_t size, cpu_set_t *set)
@@ -340,22 +327,6 @@ static int fi_sched_getaffinity(pid_t pid, size_t size, cpu_set_t *set)
 		return 0;
 	}
 	return fi_sched_getaffinity_real(pid, size, set);
-}
-#endif
-
-#ifdef FI_HAVE_GETRANDOM
-static ssize_t fi_getrandom_real(void *buf, size_t len, unsigned int flags)
-{
-	return getrandom(buf, len, flags);
-}
-
-static ssize_t fi_getrandom(void *buf, size_t len, unsigned int flags)
-{
-	if (fi_fail_getrandom) {
-		errno = ENOSYS;
-		return -1;
-	}
-	return fi_getrandom_real(buf, len, flags);
 }
 #endif
 
@@ -397,10 +368,6 @@ static void *fi_cpu_alloc(size_t count)
 # undef CPU_ALLOC
 # define CPU_ALLOC(n) fi_cpu_alloc(n)
 #endif
-#ifdef FI_HAVE_GETRANDOM
-# define getrandom fi_getrandom
-#endif
-
 /*
  * The two things the timer-less mode depends on and cannot do anything about:
  * how many CPUs there are, and whether a thread can be created. Interposed
@@ -428,17 +395,6 @@ static void *fi_cpu_alloc(size_t count)
 #include "jitterentropy-arch-thread.c"
 #endif
 
-/*
- * The time source, interposed for the same reason. Everything the startup
- * self test decides - that the timer is absent, too coarse, not monotonic, or
- * produces nothing but stuck measurements - it decides from what this returns,
- * and a machine whose timer is any of those things is one the library refuses
- * to run on at all.
- */
-#define jent_get_nstime jent_fi_real_get_nstime
-#include "jitterentropy-arch-timer.c"
-#undef jent_get_nstime
-
 enum fi_time_mode {
 	FI_TIME_REAL = 0,	/* forward to the platform */
 	FI_TIME_ZERO,		/* a counter that never leaves zero */
@@ -447,38 +403,12 @@ enum fi_time_mode {
 	FI_TIME_FIXED_STEP,	/* moves up by the same amount every time */
 };
 
-static enum fi_time_mode fi_time;
-static uint64_t fi_time_value;
-
-
-void jent_get_nstime(uint64_t *out)
-{
-	switch (fi_time) {
-	case FI_TIME_ZERO:
-		*out = 0;
-		return;
-	case FI_TIME_CONSTANT:
-		*out = 0x4242424242424242ULL;
-		return;
-	case FI_TIME_BACKWARDS:
-		fi_time_value -= 4096;
-		*out = fi_time_value;
-		return;
-	case FI_TIME_FIXED_STEP:
-		fi_time_value += 4096;
-		*out = fi_time_value;
-		return;
-	case FI_TIME_REAL:
-	default:
-		jent_fi_real_get_nstime(out);
-		return;
-	}
-}
+void jent_fi_real_get_nstime(uint64_t *out);
+void jent_fi_time_set(int mode);
 
 static void fi_time_set(enum fi_time_mode mode)
 {
-	fi_time = mode;
-	fi_time_value = 0x8000000000000000ULL;
+	jent_fi_time_set((int)mode);
 }
 
 /* Negative reports the count as undiscoverable; 0 forwards to the real one. */
@@ -521,16 +451,11 @@ int jent_fips_enabled(void)
 		return 1;
 	return jent_fi_real_fips_enabled();
 }
-#include "jitterentropy-arch-random.c"
-
 #ifndef FI_WINDOWS
 # undef sysconf
 #endif
 #ifdef __linux__
 # undef sched_getaffinity
-#endif
-#ifdef FI_HAVE_GETRANDOM
-# undef getrandom
 #endif
 
 /* Confirms the interposition is in the path at all. */

@@ -1,6 +1,25 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
 pub const build_options = internal.build_options;
+pub const arch_timer = @import("arch/timer.zig");
+pub const arch_random = @import("arch/random.zig");
+
+comptime {
+    _ = arch_timer.jent_get_nstime;
+    _ = arch_timer.jent_fi_real_get_nstime;
+    _ = arch_timer.jent_fi_time_set;
+    _ = arch_timer.jent_fi_time_mode;
+    _ = arch_timer.jent_fi_time_value;
+    if (build_options.mock_timer) {
+        _ = arch_timer.jent_set_mock_timer;
+        _ = arch_timer.jent_mock_timer_active;
+    }
+    _ = arch_random.jent_os_random_bytes;
+    _ = arch_random.jent_os_random_supported;
+    _ = arch_random.jent_random_read_file;
+    _ = arch_random.jent_random_dev_urandom;
+    _ = arch_random.jent_fi_fail_getrandom;
+}
 
 // ============================================================================
 // Re-exported Public & Internal Constants, Flags, Error Codes, and Types
@@ -148,4 +167,6 @@ pub const rand_data = internal.rand_data;
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(internal);
+    std.testing.refAllDecls(arch_timer);
+    std.testing.refAllDecls(arch_random);
 }
