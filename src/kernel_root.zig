@@ -73,6 +73,11 @@ fn exportNamespaceFunctions(comptime namespace: type) void {
             continue;
         }
         if (isExportedVariable(name)) continue;
+        if (std.mem.startsWith(u8, name, "jent_fi_") or
+            std.mem.eql(u8, name, "jent_init_test_secure_memory"))
+        {
+            continue;
+        }
         const value = @field(namespace, name);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         @export(&value, .{

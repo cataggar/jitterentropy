@@ -185,11 +185,22 @@ pub fn jent_fi_real_thread_create(
     if (!internal.build_options.internal_timer or !hosted) return -1;
 
     if (pthread_backend) {
-        if (jent_fi_fail_pthread_attr != 0) return negErr(.nomem);
+        if (comptime internal.enable_test_hooks) {
+            if (jent_fi_fail_pthread_attr != 0) return negErr(.nomem);
+        }
         var ret = pthread_attr_init(@ptrCast(&ctx.notime_pthread_attr));
         if (ret != 0) return -ret;
-        if (jent_fi_fail_pthread_create != 0) {
-            ret = errnoValue(.again);
+        if (comptime internal.enable_test_hooks) {
+            if (jent_fi_fail_pthread_create != 0) {
+                ret = errnoValue(.again);
+            } else {
+                ret = pthread_create(
+                    @ptrCast(&ctx.notime_thread_id),
+                    @ptrCast(&ctx.notime_pthread_attr),
+                    start_routine,
+                    arg,
+                );
+            }
         } else {
             ret = pthread_create(
                 @ptrCast(&ctx.notime_thread_id),
@@ -208,7 +219,9 @@ pub fn jent_fi_real_thread_create(
 
     ctx.notime_routine = start_routine;
     ctx.notime_arg = arg;
-    if (jent_fi_fail_thread_start != 0) return negErr(.again);
+    if (comptime internal.enable_test_hooks) {
+        if (jent_fi_fail_thread_start != 0) return negErr(.again);
+    }
     errnoPtr().* = 0;
     const handle = _beginthreadex(null, 0, windowsThreadStart, ctx, 0, null);
     if (handle == 0) {
@@ -225,8 +238,10 @@ pub fn jent_notime_thread_create(
     start_routine: internal.jent_notime_start_routine,
     arg: ?*anyopaque,
 ) callconv(.c) c_int {
-    if (jent_fi_fail_thread_create != 0) {
-        return if (internal.build_options.internal_timer and hosted) negErr(.again) else -1;
+    if (comptime internal.enable_test_hooks) {
+        if (jent_fi_fail_thread_create != 0) {
+            return if (internal.build_options.internal_timer and hosted) negErr(.again) else -1;
+        }
     }
     return jent_fi_real_thread_create(ctx, start_routine, arg);
 }

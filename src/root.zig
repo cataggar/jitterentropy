@@ -295,32 +295,34 @@ comptime {
     exportVariable("jent_selftest_run", &base.jent_selftest_run);
     exportVariable("jent_common_timer_gcd", &gcd.jent_common_timer_gcd);
     exportVariable("jent_notime_thread_builtin", &timer.jent_notime_thread_builtin);
-    exportVariable("jent_cache_cpuid_callback", &arch_cache.jent_cache_cpuid_callback);
-    exportVariable("jent_fi_cache_sysconf_mode", &arch_cache.jent_fi_cache_sysconf_mode);
-    exportVariable("sysfs_cpu_base", &arch_cache.sysfs_cpu_base);
-    exportVariable("proc_cpuinfo_path", &arch_cache.proc_cpuinfo_path);
-    exportVariable("jent_fi_force_fips_enabled", &arch_fips.jent_fi_force_fips_enabled);
-    exportVariable("jent_fi_fail_alloc", &arch_memory.jent_fi_fail_alloc);
-    exportVariable("jent_fi_alloc_count", &arch_memory.jent_fi_alloc_count);
-    exportVariable("jent_fi_fail_mmap", &arch_memory.jent_fi_fail_mmap);
-    exportVariable("jent_fi_fail_mprotect", &arch_memory.jent_fi_fail_mprotect);
-    exportVariable("jent_fi_mprotect_calls", &arch_memory.jent_fi_mprotect_calls);
-    exportVariable("jent_fi_fail_mlock", &arch_memory.jent_fi_fail_mlock);
-    exportVariable("jent_fi_mlock_errno", &arch_memory.jent_fi_mlock_errno);
-    exportVariable("jent_fi_sysconf_mode", &arch_memory.jent_fi_sysconf_mode);
-    exportVariable("jent_zeroize_inspect_hook", &arch_memory.jent_zeroize_inspect_hook);
-    exportVariable("jent_fi_ncpu", &arch_ncpu.jent_fi_ncpu);
-    exportVariable("jent_fi_fail_affinity", &arch_ncpu.jent_fi_fail_affinity);
-    exportVariable("jent_fi_empty_affinity", &arch_ncpu.jent_fi_empty_affinity);
-    exportVariable("jent_fi_fail_cpu_alloc", &arch_ncpu.jent_fi_fail_cpu_alloc);
-    exportVariable("jent_fi_ncpu_sysconf_mode", &arch_ncpu.jent_fi_ncpu_sysconf_mode);
-    exportVariable("jent_fi_fail_getrandom", &arch_random.jent_fi_fail_getrandom);
-    exportVariable("jent_fi_fail_thread_create", &arch_thread.jent_fi_fail_thread_create);
-    exportVariable("jent_fi_fail_pthread_create", &arch_thread.jent_fi_fail_pthread_create);
-    exportVariable("jent_fi_fail_pthread_attr", &arch_thread.jent_fi_fail_pthread_attr);
-    exportVariable("jent_fi_fail_thread_start", &arch_thread.jent_fi_fail_thread_start);
-    exportVariable("jent_fi_time_mode", &arch_timer.jent_fi_time_mode);
-    exportVariable("jent_fi_time_value", &arch_timer.jent_fi_time_value);
+    if (internal.enable_test_hooks) {
+        exportVariable("jent_cache_cpuid_callback", &arch_cache.jent_cache_cpuid_callback);
+        exportVariable("jent_fi_cache_sysconf_mode", &arch_cache.jent_fi_cache_sysconf_mode);
+        exportVariable("sysfs_cpu_base", &arch_cache.sysfs_cpu_base);
+        exportVariable("proc_cpuinfo_path", &arch_cache.proc_cpuinfo_path);
+        exportVariable("jent_fi_force_fips_enabled", &arch_fips.jent_fi_force_fips_enabled);
+        exportVariable("jent_fi_fail_alloc", &arch_memory.jent_fi_fail_alloc);
+        exportVariable("jent_fi_alloc_count", &arch_memory.jent_fi_alloc_count);
+        exportVariable("jent_fi_fail_mmap", &arch_memory.jent_fi_fail_mmap);
+        exportVariable("jent_fi_fail_mprotect", &arch_memory.jent_fi_fail_mprotect);
+        exportVariable("jent_fi_mprotect_calls", &arch_memory.jent_fi_mprotect_calls);
+        exportVariable("jent_fi_fail_mlock", &arch_memory.jent_fi_fail_mlock);
+        exportVariable("jent_fi_mlock_errno", &arch_memory.jent_fi_mlock_errno);
+        exportVariable("jent_fi_sysconf_mode", &arch_memory.jent_fi_sysconf_mode);
+        exportVariable("jent_zeroize_inspect_hook", &arch_memory.jent_zeroize_inspect_hook);
+        exportVariable("jent_fi_ncpu", &arch_ncpu.jent_fi_ncpu);
+        exportVariable("jent_fi_fail_affinity", &arch_ncpu.jent_fi_fail_affinity);
+        exportVariable("jent_fi_empty_affinity", &arch_ncpu.jent_fi_empty_affinity);
+        exportVariable("jent_fi_fail_cpu_alloc", &arch_ncpu.jent_fi_fail_cpu_alloc);
+        exportVariable("jent_fi_ncpu_sysconf_mode", &arch_ncpu.jent_fi_ncpu_sysconf_mode);
+        exportVariable("jent_fi_fail_getrandom", &arch_random.jent_fi_fail_getrandom);
+        exportVariable("jent_fi_fail_thread_create", &arch_thread.jent_fi_fail_thread_create);
+        exportVariable("jent_fi_fail_pthread_create", &arch_thread.jent_fi_fail_pthread_create);
+        exportVariable("jent_fi_fail_pthread_attr", &arch_thread.jent_fi_fail_pthread_attr);
+        exportVariable("jent_fi_fail_thread_start", &arch_thread.jent_fi_fail_thread_start);
+        exportVariable("jent_fi_time_mode", &arch_timer.jent_fi_time_mode);
+        exportVariable("jent_fi_time_value", &arch_timer.jent_fi_time_value);
+    }
 }
 
 // ============================================================================

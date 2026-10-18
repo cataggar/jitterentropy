@@ -196,7 +196,9 @@ pub fn jent_memory_backend_name() callconv(.c) [*:0]const u8 {
 }
 
 pub fn jent_pagesize() callconv(.c) usize {
-    if (jent_fi_sysconf_mode == 1 or jent_fi_sysconf_mode == 2) return 4096;
+    if (comptime internal.enable_test_hooks) {
+        if (jent_fi_sysconf_mode == 1 or jent_fi_sysconf_mode == 2) return 4096;
+    }
     if (use_windows) {
         var system_info: SystemInfo = undefined;
         GetSystemInfo(&system_info);
@@ -225,19 +227,23 @@ fn ptrSub(ptr: *anyopaque, offset: usize) *anyopaque {
 }
 
 fn injectedMprotect(address: *anyopaque, length: usize, protection: c_int) bool {
-    const call_num = @atomicRmw(c_uint, &jent_fi_mprotect_calls, .Add, 1, .monotonic) +% 1;
-    const fail_mprotect = @atomicLoad(c_int, &jent_fi_fail_mprotect, .monotonic);
-    if (fail_mprotect != 0 and
-        @as(c_uint, @intCast(fail_mprotect)) == call_num)
-    {
-        return false;
+    if (comptime internal.enable_test_hooks) {
+        const call_num = @atomicRmw(c_uint, &jent_fi_mprotect_calls, .Add, 1, .monotonic) +% 1;
+        const fail_mprotect = @atomicLoad(c_int, &jent_fi_fail_mprotect, .monotonic);
+        if (fail_mprotect != 0 and
+            @as(c_uint, @intCast(fail_mprotect)) == call_num)
+        {
+            return false;
+        }
     }
     return mprotect(address, length, protection) == 0;
 }
 
 fn injectedMlock(address: *anyopaque, length: usize) struct { ok: bool, err: c_int } {
-    if (jent_fi_fail_mlock != 0) {
-        return .{ .ok = false, .err = jent_fi_mlock_errno };
+    if (comptime internal.enable_test_hooks) {
+        if (jent_fi_fail_mlock != 0) {
+            return .{ .ok = false, .err = jent_fi_mlock_errno };
+        }
     }
     const rc = mlock(address, length);
     const err = if (rc == 0) 0 else switch (std.c.errno(rc)) {
@@ -318,7 +324,9 @@ fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
         }
     } else if (use_windows) {
         const layout = roundedLayout(len) orelse return null;
-        if (jent_fi_fail_mmap != 0) return null;
+        if (comptime internal.enable_test_hooks) {
+            if (jent_fi_fail_mmap != 0) return null;
+        }
         const base = VirtualAlloc(
             null,
             layout.total,
@@ -326,13 +334,15 @@ fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
             PAGE_NOACCESS,
         ) orelse return null;
 
-        const call_num = @atomicRmw(c_uint, &jent_fi_mprotect_calls, .Add, 1, .monotonic) +% 1;
-        const fail_mprotect = @atomicLoad(c_int, &jent_fi_fail_mprotect, .monotonic);
-        if (fail_mprotect != 0 and
-            @as(c_uint, @intCast(fail_mprotect)) == call_num)
-        {
-            _ = VirtualFree(base, 0, MEM_RELEASE);
-            return null;
+        if (comptime internal.enable_test_hooks) {
+            const call_num = @atomicRmw(c_uint, &jent_fi_mprotect_calls, .Add, 1, .monotonic) +% 1;
+            const fail_mprotect = @atomicLoad(c_int, &jent_fi_fail_mprotect, .monotonic);
+            if (fail_mprotect != 0 and
+                @as(c_uint, @intCast(fail_mprotect)) == call_num)
+            {
+                _ = VirtualFree(base, 0, MEM_RELEASE);
+                return null;
+            }
         }
 
         const payload_ptr = ptrAdd(base, jent_pagesize());
@@ -342,7 +352,10 @@ fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
             return null;
         }
         if (secure) {
-            const locked = if (jent_fi_fail_mlock != 0) 0 else VirtualLock(payload_ptr, layout.payload);
+            const locked = if (comptime internal.enable_test_hooks)
+                (if (jent_fi_fail_mlock != 0) 0 else VirtualLock(payload_ptr, layout.payload))
+            else
+                VirtualLock(payload_ptr, layout.payload);
             @atomicStore(u8, &mlock_active, @intFromBool(locked != 0), .monotonic);
             if (locked == 0 and (flags & internal.JENT_FORCE_SECURE_MEM) != 0) {
                 _ = VirtualFree(base, 0, MEM_RELEASE);
@@ -352,7 +365,9 @@ fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
         result = payload_ptr;
     } else if (use_posix) {
         const layout = roundedLayout(len) orelse return null;
-        if (jent_fi_fail_mmap != 0) return null;
+        if (comptime internal.enable_test_hooks) {
+            if (jent_fi_fail_mmap != 0) return null;
+        }
         const mapped = mmap(
             null,
             layout.total,
@@ -408,10 +423,12 @@ pub fn jent_fi_real_zalloc(len: usize, flags: c_uint) callconv(.c) ?*anyopaque {
 }
 
 pub fn jent_zalloc(len: usize, flags: c_uint) callconv(.c) ?*anyopaque {
-    const count = @atomicRmw(c_uint, &jent_fi_alloc_count, .Add, 1, .monotonic) +% 1;
-    const fail_alloc = @atomicLoad(c_uint, &jent_fi_fail_alloc, .monotonic);
-    if (fail_alloc != 0 and count == fail_alloc) {
-        return null;
+    if (comptime internal.enable_test_hooks) {
+        const count = @atomicRmw(c_uint, &jent_fi_alloc_count, .Add, 1, .monotonic) +% 1;
+        const fail_alloc = @atomicLoad(c_uint, &jent_fi_fail_alloc, .monotonic);
+        if (fail_alloc != 0 and count == fail_alloc) {
+            return null;
+        }
     }
     return jent_fi_real_zalloc(len, flags);
 }
@@ -421,7 +438,9 @@ pub fn jent_zalloc_unlocked(len: usize) callconv(.c) ?*anyopaque {
 }
 
 fn inspectBeforeRelease(ptr: *anyopaque, len: usize) void {
-    if (jent_zeroize_inspect_hook) |hook| hook(ptr, len);
+    if (comptime internal.enable_test_hooks) {
+        if (jent_zeroize_inspect_hook) |hook| hook(ptr, len);
+    }
 }
 
 pub fn jent_zfree(optional_ptr: ?*anyopaque, len: usize) callconv(.c) void {

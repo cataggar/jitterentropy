@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const root = @import("root");
 const is_linux_kernel = @hasDecl(root, "is_linux_kernel") and root.is_linux_kernel;
+const enable_test_hooks = (@hasDecl(build_options, "export_internals") and build_options.export_internals) or builtin.is_test;
 
 extern fn jent_kshim_random_get_entropy() callconv(.c) u64;
 
@@ -50,19 +51,30 @@ pub fn jent_get_nstime(out: *u64) callconv(.c) void {
         }
     }
 
-    switch (jent_fi_time_mode) {
-        FI_TIME_ZERO => out.* = 0,
-        FI_TIME_CONSTANT => out.* = 0x4242424242424242,
-        FI_TIME_BACKWARDS => {
-            jent_fi_time_value -%= 4096;
-            out.* = jent_fi_time_value;
-        },
-        FI_TIME_FIXED_STEP => {
-            jent_fi_time_value +%= 4096;
-            out.* = jent_fi_time_value;
-        },
-        else => realGetNstime(out),
+    if (comptime enable_test_hooks) {
+        switch (jent_fi_time_mode) {
+            FI_TIME_ZERO => {
+                out.* = 0;
+                return;
+            },
+            FI_TIME_CONSTANT => {
+                out.* = 0x4242424242424242;
+                return;
+            },
+            FI_TIME_BACKWARDS => {
+                jent_fi_time_value -%= 4096;
+                out.* = jent_fi_time_value;
+                return;
+            },
+            FI_TIME_FIXED_STEP => {
+                jent_fi_time_value +%= 4096;
+                out.* = jent_fi_time_value;
+                return;
+            },
+            else => {},
+        }
     }
+    realGetNstime(out);
 }
 
 fn realGetNstime(out: *u64) void {
