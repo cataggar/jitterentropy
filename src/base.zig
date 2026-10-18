@@ -19,15 +19,7 @@ comptime {
         @compileError("the entropy collection core must be compiled in Debug mode");
 }
 
-extern fn jent_notime_block_switch() callconv(.c) void;
-extern fn jent_notime_set_cpu(cpu: c_ulong) callconv(.c) c_int;
-extern fn jent_notime_settick(ec: *RandData) callconv(.c) c_int;
-extern fn jent_notime_unsettick(ec: *RandData) callconv(.c) void;
-extern fn jent_notime_enable(ec: *RandData, flags: c_uint) callconv(.c) c_int;
-extern fn jent_notime_disable(ec: *RandData) callconv(.c) void;
-extern fn jent_notime_switch(new_thread: ?*i.jent_notime_thread) callconv(.c) c_int;
-extern fn jent_notime_force() callconv(.c) void;
-extern fn jent_notime_forced() callconv(.c) c_int;
+const timer = @import("timer.zig");
 
 pub var jent_selftest_run: c_int = 0;
 
@@ -40,43 +32,43 @@ pub fn jent_version() callconv(.c) c_uint {
 }
 
 fn notimeBlockSwitch() void {
-    if (i.build_options.internal_timer) jent_notime_block_switch();
+    if (i.build_options.internal_timer) timer.jent_notime_block_switch();
 }
 
 fn notimeSetCpu(cpu: c_ulong) c_int {
-    if (i.build_options.internal_timer) return jent_notime_set_cpu(cpu);
+    if (i.build_options.internal_timer) return timer.jent_notime_set_cpu(cpu);
     return -EOPNOTSUPP;
 }
 
 fn notimeSettick(ec: *RandData) c_int {
-    if (i.build_options.internal_timer) return jent_notime_settick(ec);
+    if (i.build_options.internal_timer) return timer.jent_notime_settick(ec);
     return 0;
 }
 
 fn notimeUnsettick(ec: *RandData) void {
-    if (i.build_options.internal_timer) jent_notime_unsettick(ec);
+    if (i.build_options.internal_timer) timer.jent_notime_unsettick(ec);
 }
 
 fn notimeEnable(ec: *RandData, flags: c_uint) c_int {
-    if (i.build_options.internal_timer) return jent_notime_enable(ec, flags);
+    if (i.build_options.internal_timer) return timer.jent_notime_enable(ec, flags);
     return if (flags & i.JENT_FORCE_INTERNAL_TIMER != 0) i.EHEALTH else 0;
 }
 
 fn notimeDisable(ec: *RandData) void {
-    if (i.build_options.internal_timer) jent_notime_disable(ec);
+    if (i.build_options.internal_timer) timer.jent_notime_disable(ec);
 }
 
 fn notimeSwitch(new_thread: ?*i.jent_notime_thread) c_int {
-    if (i.build_options.internal_timer) return jent_notime_switch(new_thread);
+    if (i.build_options.internal_timer) return timer.jent_notime_switch(new_thread);
     return -EOPNOTSUPP;
 }
 
 fn notimeForce() void {
-    if (i.build_options.internal_timer) jent_notime_force();
+    if (i.build_options.internal_timer) timer.jent_notime_force();
 }
 
 fn notimeForced() c_int {
-    if (i.build_options.internal_timer) return jent_notime_forced();
+    if (i.build_options.internal_timer) return timer.jent_notime_forced();
     return 0;
 }
 

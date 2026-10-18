@@ -37,12 +37,8 @@ var failures: c_uint = 0;
 var skipped: c_uint = 0;
 
 fn errnoPointer() *c_int {
-    return if (builtin.os.tag == .windows)
-        _errno()
-    else if (builtin.os.tag == .linux)
-        __errno_location()
-    else
-        __error();
+    if (builtin.os.tag == .dragonfly) return __error();
+    return std.c._errno();
 }
 
 pub export fn jent_random_data(ec: *rand_data) callconv(.c) void {

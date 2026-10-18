@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const h = @import("test_harness");
 const jent = @import("internal");
 
-const EAGAIN: c_int = 11;
+const EAGAIN: c_int = if (builtin.os.tag == .linux) 11 else 35;
 const EINVAL: c_int = 22;
 const ENOMEM: c_int = 12;
 const EPERM: c_int = 1;

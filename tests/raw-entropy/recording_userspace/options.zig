@@ -55,11 +55,8 @@ pub fn stderr() *anyopaque {
 }
 
 fn errnoPtr() *c_int {
-    return switch (builtin.os.tag) {
-        .windows => c._errno(),
-        .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .netbsd, .openbsd, .dragonfly => c.__error(),
-        else => c.__errno_location(),
-    };
+    if (builtin.os.tag == .dragonfly) return c.__error();
+    return std.c._errno();
 }
 
 pub fn parseUnsigned(text: [:0]const u8, base: c_int) ?c_ulong {

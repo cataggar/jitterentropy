@@ -34,7 +34,7 @@ pub fn main(init: std.process.Init.Minimal) u8 {
 
     var input: [24]u8 = undefined;
     for (0..32) |i| {
-        var x: u64 = 0x9e3779b97f4a7c15 *% (i + 1);
+        var x: u64 = @as(u64, 0x9e3779b97f4a7c15) *% @as(u64, i + 1);
         for (&input) |*byte| {
             x ^= x >> 30;
             x *%= 0xbf58476d1ce4e5b9;

@@ -58,7 +58,7 @@ const Err = enum {
 
 fn errnoValue(err: Err) c_int {
     return switch (builtin.os.tag) {
-        .macos, .ios, .tvos, .watchos, .visionos => switch (err) {
+        .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .netbsd, .openbsd, .dragonfly => switch (err) {
             .perm => 1,
             .io => 5,
             .again => 35,
@@ -67,7 +67,7 @@ fn errnoValue(err: Err) c_int {
             .inval => 22,
             .nodev => 19,
             .nosys => 78,
-            .notsup => 45,
+            .notsup => if (builtin.os.tag == .netbsd) 86 else 45,
         },
         else => switch (err) {
             .perm => 1,
@@ -88,15 +88,8 @@ fn negErr(err: Err) c_long {
 }
 
 fn errnoPtr() *c_int {
-    if (linux) return __errno_location();
-    if (builtin.os.tag.isDarwin() or builtin.os.tag == .freebsd or
-        builtin.os.tag == .netbsd or builtin.os.tag == .openbsd or
-        builtin.os.tag == .dragonfly)
-    {
-        return __error();
-    }
-    if (builtin.os.tag == .illumos) return ___errno();
-    return _errno();
+    if (builtin.os.tag == .dragonfly) return __error();
+    return std.c._errno();
 }
 
 fn sysconfNprocessorsOnln() c_int {

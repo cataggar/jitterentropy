@@ -469,5 +469,5 @@ fn finish(system_table: *uefi.tables.SystemTable, status: uefi.Status) usize {
 
     system_table.runtime_services._resetSystem(.shutdown, status, 0, null);
 
-    return @backingInt(status);
+    return @as(*const usize, @ptrCast(&status)).*;
 }

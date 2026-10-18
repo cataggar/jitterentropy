@@ -58,6 +58,10 @@ pub const JENT_IOCHASHLOOPS: u32 = linux.IOCTL.IOR(JENT_IOC_MAGIC, 0x0b, u32);
 pub const JENT_IOCSELFTEST: u32 = linux.IOCTL.IO(JENT_IOC_MAGIC, 0x0c);
 
 const IoctlRequest = if (builtin.abi.isGnu()) c_ulong else c_int;
+const EINTR: c_int = 4;
+const EINVAL: c_int = 22;
+const ENAMETOOLONG: c_int = 36;
+const EOVERFLOW: c_int = 75;
 
 extern "c" fn open(path: [*:0]const u8, oflag: c_int, ...) c_int;
 extern "c" fn close(fd: c_int) c_int;
@@ -93,7 +97,7 @@ pub export fn jent_kernel_close(fd: c_int) callconv(.c) c_int {
 
 pub export fn jent_kernel_read(fd: c_int, buf: ?*anyopaque, len: usize) callconv(.c) isize {
     if ((buf == null and len != 0) or len > @as(usize, @intCast(std.math.maxInt(isize))))
-        return -@as(isize, @backingInt(linux.E.INVAL));
+        return -@as(isize, EINVAL);
 
     var done: usize = 0;
     const base: [*]u8 = if (buf) |b| @ptrCast(b) else undefined;
@@ -101,7 +105,7 @@ pub export fn jent_kernel_read(fd: c_int, buf: ?*anyopaque, len: usize) callconv
         const r = read(fd, base + done, len - done);
         if (r < 0) {
             const err = getErrno();
-            if (err == @backingInt(linux.E.INTR))
+            if (err == EINTR)
                 continue;
             // What was read is delivered; the error comes next.
             return if (done != 0) @intCast(done) else -@as(isize, err);
@@ -115,9 +119,9 @@ pub export fn jent_kernel_read(fd: c_int, buf: ?*anyopaque, len: usize) callconv
 }
 
 pub export fn jent_kernel_status(fd: c_int, buf: ?[*]u8, buflen: usize) callconv(.c) c_int {
-    const b = buf orelse return -@as(c_int, @backingInt(linux.E.INVAL));
+    const b = buf orelse return -EINVAL;
     if (buflen == 0 or buflen > std.math.maxInt(u32))
-        return -@as(c_int, @backingInt(linux.E.INVAL));
+        return -EINVAL;
 
     var arg: jent_status_ioctl = undefined;
     @memset(std.mem.asBytes(&arg), 0);
@@ -127,9 +131,9 @@ pub export fn jent_kernel_status(fd: c_int, buf: ?[*]u8, buflen: usize) callconv
 }
 
 pub export fn jent_kernel_uuid(fd: c_int, buf: ?[*]u8, buflen: usize) callconv(.c) c_int {
-    const b = buf orelse return -@as(c_int, @backingInt(linux.E.INVAL));
+    const b = buf orelse return -EINVAL;
     if (buflen < JENT_KERNEL_UUID_STRLEN)
-        return -@as(c_int, @backingInt(linux.E.INVAL));
+        return -EINVAL;
 
     var arg: jent_uuid_ioctl = undefined;
     @memset(std.mem.asBytes(&arg), 0);
@@ -145,7 +149,7 @@ pub export fn jent_kernel_uuid(fd: c_int, buf: ?[*]u8, buflen: usize) callconv(.
 
 // The ioctls that answer with one __u32.
 fn jent_kernel_u32(fd: c_int, request: u32, val: ?*c_uint) c_int {
-    const out = val orelse return -@as(c_int, @backingInt(linux.E.INVAL));
+    const out = val orelse return -EINVAL;
     var v: u32 = 0;
     const ret = jent_kernel_ioctl(fd, request, &v);
     if (ret != 0)
@@ -180,13 +184,13 @@ pub export fn jent_kernel_hashloops(fd: c_int, hashloops: ?*c_uint) callconv(.c)
 }
 
 pub export fn jent_kernel_memsize(fd: c_int, memsize: ?*usize) callconv(.c) c_int {
-    const out = memsize orelse return -@as(c_int, @backingInt(linux.E.INVAL));
+    const out = memsize orelse return -EINVAL;
     var v: u64 = 0;
     const ret = jent_kernel_ioctl(fd, JENT_IOCMEMSIZE, &v);
     if (ret != 0)
         return ret;
     if (v > std.math.maxInt(usize))
-        return -@as(c_int, @backingInt(linux.E.OVERFLOW));
+        return -EOVERFLOW;
 
     out.* = @intCast(v);
     return 0;
@@ -230,7 +234,7 @@ pub fn jent_kernel_file(path: [*:0]const u8, buf: [*]u8, buflen: usize) c_int {
         const r = read(fd, buf + done, buflen - 1 - done);
         if (r < 0) {
             const err = getErrno();
-            if (err == @backingInt(linux.E.INTR))
+            if (err == EINTR)
                 continue;
             ret = -err;
             break;
@@ -246,13 +250,13 @@ pub fn jent_kernel_file(path: [*:0]const u8, buf: [*]u8, buflen: usize) c_int {
         var r: isize = undefined;
         while (true) {
             r = read(fd, &more, 1);
-            if (!(r < 0 and getErrno() == @backingInt(linux.E.INTR)))
+            if (!(r < 0 and getErrno() == EINTR))
                 break;
         }
         if (r < 0) {
             ret = -getErrno();
         } else if (r > 0) {
-            ret = -@as(c_int, @backingInt(linux.E.OVERFLOW));
+            ret = -EOVERFLOW;
         }
     }
     _ = close(fd);
@@ -262,19 +266,19 @@ pub fn jent_kernel_file(path: [*:0]const u8, buf: [*]u8, buflen: usize) c_int {
 }
 
 pub export fn jent_kernel_proc(name: ?[*:0]const u8, buf: ?[*]u8, buflen: usize) callconv(.c) c_int {
-    const n = name orelse return -@as(c_int, @backingInt(linux.E.INVAL));
-    const b = buf orelse return -@as(c_int, @backingInt(linux.E.INVAL));
+    const n = name orelse return -EINVAL;
+    const b = buf orelse return -EINVAL;
     if (buflen == 0)
-        return -@as(c_int, @backingInt(linux.E.INVAL));
+        return -EINVAL;
 
     const name_slice = std.mem.span(n);
     // A name below the directory: nothing leading out of it.
     if (name_slice.len == 0 or name_slice[0] == '/' or std.mem.indexOf(u8, name_slice, "..") != null)
-        return -@as(c_int, @backingInt(linux.E.INVAL));
+        return -EINVAL;
 
     var path: [JENT_KERNEL_PROC.len + 1 + 64]u8 = undefined;
     if (JENT_KERNEL_PROC.len + name_slice.len >= path.len)
-        return -@as(c_int, @backingInt(linux.E.NAMETOOLONG));
+        return -ENAMETOOLONG;
 
     @memcpy(path[0..JENT_KERNEL_PROC.len], JENT_KERNEL_PROC);
     @memcpy(path[JENT_KERNEL_PROC.len .. JENT_KERNEL_PROC.len + name_slice.len], name_slice);

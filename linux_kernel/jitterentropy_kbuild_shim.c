@@ -559,7 +559,7 @@ static struct jent_hwrng_ctx jent_hwrng_ctx;
 static struct proc_dir_entry *jent_hwrng_proc;
 static bool jent_hwrng_registered;
 #if !defined(MODULE)
-static bool jent_hwrng_pending __initdata;
+static bool jent_hwrng_pending;
 #endif
 
 extern int jent_zig_hwrng_read(struct jent_hwrng_ctx *, void *, size_t, bool);

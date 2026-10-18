@@ -61,28 +61,11 @@ fn installLibrary(
     native_target: bool,
     archive_name: []const u8,
 ) void {
-    if (linkage != .static or !native_target or (os_tag != .linux and !os_tag.isDarwin())) {
-        b.installArtifact(library);
-        return;
-    }
-
-    const metadata = b.addInstallArtifact(library, .{ .dest_dir = .disabled });
-    b.getInstallStep().dependOn(&metadata.step);
-
-    const localize = if (os_tag == .linux)
-        b.addSystemCommand(&.{ "objcopy", "--localize-hidden" })
-    else
-        b.addSystemCommand(&.{ "strip", "-x", "-o" });
-    const localized = if (os_tag == .linux) blk: {
-        localize.addFileArg(library.getEmittedBin());
-        break :blk localize.addOutputFileArg(archive_name);
-    } else blk: {
-        const output = localize.addOutputFileArg(archive_name);
-        localize.addFileArg(library.getEmittedBin());
-        break :blk output;
-    };
-    const install_archive = b.addInstallFileWithDir(localized, .lib, archive_name);
-    b.getInstallStep().dependOn(&install_archive.step);
+    _ = linkage;
+    _ = os_tag;
+    _ = native_target;
+    _ = archive_name;
+    b.installArtifact(library);
 }
 
 pub fn build(b: *std.Build) void {
@@ -373,6 +356,7 @@ pub fn build(b: *std.Build) void {
     override_core_mod.addOptions("build_options", override_build_options);
     configureIncludePaths(b, override_core_mod);
     configureCommonDefines(b, override_core_mod, target, opts, .static, false);
+    configureSystemLibraries(override_core_mod, target, opts);
 
     var mock_opts = opts;
     mock_opts.mock_timer = true;
@@ -658,6 +642,7 @@ pub fn build(b: *std.Build) void {
     const health_mod = createCModule(b, target, optimize, opts, null);
     health_mod.root_source_file = b.path("tests/health/health.zig");
     health_mod.addImport("jent", override_core_mod);
+    configureSystemLibraries(health_mod, target, opts);
     const health_exe = b.addExecutable(.{
         .name = "jitterentropy-health",
         .root_module = health_mod,
@@ -1135,6 +1120,7 @@ pub fn build(b: *std.Build) void {
     const fuzz_health_mod = createCModule(b, target, .Debug, opts, null);
     fuzz_health_mod.root_source_file = b.path("tests/fuzz/fuzz_health_standalone.zig");
     fuzz_health_mod.addImport("fuzz_health", fuzz_health_impl_mod);
+    configureSystemLibraries(fuzz_health_mod, target, opts);
     const fuzz_health_exe = b.addExecutable(.{
         .name = "fuzz-health-standalone",
         .root_module = fuzz_health_mod,

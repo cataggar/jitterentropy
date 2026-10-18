@@ -45,8 +45,8 @@ const lrngval_t = u64;
 const DATASIZE: usize = @sizeOf(lrngval_t);
 const BUFFER_SIZE: usize = RAWENTROPY_SAMPLES * DATASIZE;
 
-const EINVAL: c_int = @backingInt(linux.E.INVAL);
-const EIO: c_int = @backingInt(linux.E.IO);
+const EINVAL: c_int = 22;
+const EIO: c_int = 5;
 
 const IoctlRequest = if (builtin.abi.isGnu()) c_ulong else c_int;
 

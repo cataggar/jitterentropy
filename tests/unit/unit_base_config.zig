@@ -288,9 +288,6 @@ pub const off_t = __off_t;
 pub const off64_t = __off64_t;
 pub const fpos_t = __fpos_t;
 pub const fpos64_t = __fpos64_t;
-pub extern var stdin: ?*FILE;
-pub extern var stdout: ?*FILE;
-pub extern var stderr: ?*FILE;
 pub extern fn remove(__filename: [*c]const u8) c_int;
 pub extern fn rename(__old: [*c]const u8, __new: [*c]const u8) c_int;
 pub extern fn renameat(__oldfd: c_int, __old: [*c]const u8, __newfd: c_int, __new: [*c]const u8) c_int;
@@ -830,7 +827,6 @@ pub extern fn strverscmp(__s1: [*c]const u8, __s2: [*c]const u8) c_int;
 pub extern fn strfry(__string: [*c]u8) [*c]u8;
 pub extern fn memfrob(__s: ?*anyopaque, __n: usize) ?*anyopaque;
 pub extern fn basename(__filename: [*c]const u8) [*c]u8;
-pub extern fn __errno_location() [*c]c_int;
 pub extern var program_invocation_name: [*c]u8;
 pub extern var program_invocation_short_name: [*c]u8;
 pub const error_t = c_int;
@@ -1776,25 +1772,9 @@ pub fn jent_memlock_required(arg_flags: c_uint) callconv(.c) c_int {
     return @intFromBool(!!((flags & @as(c_uint, @bitCast(@as(c_int, ((@as(c_int, 1) << @intCast(@as(c_int, 6))) | (@as(c_int, 1) << @intCast(@as(c_int, 5)))) | (@as(c_int, 1) << @intCast(@as(c_int, 8))))))) != 0));
 }
 pub fn jent_raise_memlock_limit(arg_flags: c_uint) callconv(.c) c_int {
-    var flags = arg_flags;
-    _ = &flags;
-    var want: c_ulonglong = undefined;
-    _ = &want;
-    var lim: struct_rlimit = undefined;
-    _ = &lim;
-    if (!(jent_memlock_required(flags) != 0)) return 0;
-    want = jent_memlock_size(flags);
-    if (getrlimit(__RLIMIT_MEMLOCK, &lim) != 0) return 1;
-    if ((lim.rlim_cur == @as(__rlim_t, @bitCast(@as(c_long, -@as(c_int, 1))))) or (@as(c_ulonglong, lim.rlim_cur) >= want)) return 0;
-    lim.rlim_cur = @truncate(want);
-    if ((lim.rlim_max != @as(__rlim_t, @bitCast(@as(c_long, -@as(c_int, 1))))) and (@as(c_ulonglong, lim.rlim_max) < want)) {
-        lim.rlim_max = @truncate(want);
-    }
-    if (!(setrlimit(__RLIMIT_MEMLOCK, &lim) != 0)) return 0;
-    if (getrlimit(__RLIMIT_MEMLOCK, &lim) != 0) return 1;
-    if (lim.rlim_cur >= lim.rlim_max) return 0;
-    lim.rlim_cur = lim.rlim_max;
-    return if (setrlimit(__RLIMIT_MEMLOCK, &lim) != 0) @as(c_int, 1) else @as(c_int, 0);
+    _ = arg_flags;
+    @import("test_harness").raiseMemlockLimit();
+    return 0;
 }
 pub fn jent_secmem_size(arg_flags: c_uint) callconv(.c) c_ulonglong {
     var flags = arg_flags;
@@ -1820,17 +1800,24 @@ pub fn jent_ut_group(arg_name: [*c]const u8) callconv(.c) void {
     var name = arg_name;
     _ = &name;
     _ = printf("%s\n", name);
-    _ = fflush(stdout);
+    _ = fflush(null);
 }
 pub fn jent_ut_setup() callconv(.c) void {
     _ = jent_raise_memlock_limit(@bitCast(@as(c_int, @as(c_int, 1) << @intCast(@as(c_int, 8)))));
     _ = jent_init_secure_memory(@bitCast(@as(c_int, @as(c_int, 1) << @intCast(@as(c_int, 8)))));
 }
 pub fn jent_ut_memlock_available() callconv(.c) c_int {
-    var rl: struct_rlimit = undefined;
-    _ = &rl;
-    if (getrlimit(__RLIMIT_MEMLOCK, &rl) != 0) return 1;
-    return @intFromBool((rl.rlim_cur == @as(__rlim_t, @bitCast(@as(c_long, -@as(c_int, 1))))) or (rl.rlim_cur >= @as(rlim_t, 16384)));
+    const std = @import("std");
+    const builtin = @import("builtin");
+    if (builtin.os.tag == .windows or builtin.os.tag == .freestanding) return 1;
+    if (@hasDecl(std.c, "rlimit_resource") and @hasDecl(std.c, "getrlimit")) {
+        if (@hasField(std.c.rlimit_resource, "MEMLOCK")) {
+            var rl: std.c.rlimit = undefined;
+            if (std.c.getrlimit(.MEMLOCK, &rl) != 0) return 1;
+            return @intFromBool(rl.cur == std.c.RLIM.INFINITY or rl.cur >= 16384);
+        }
+    }
+    return 1;
 }
 pub fn jent_ut_report(arg_suite: [*c]const u8) callconv(.c) c_int {
     var suite = arg_suite;
@@ -4015,7 +4002,6 @@ pub const ENOTRECOVERABLE = @as(c_int, 131);
 pub const ERFKILL = @as(c_int, 132);
 pub const EHWPOISON = @as(c_int, 133);
 pub const ENOTSUP = EOPNOTSUPP;
-pub const errno = __errno_location().*;
 pub const __error_t_defined = @as(c_int, 1);
 pub const _SYS_STAT_H = @as(c_int, 1);
 pub const _BITS_STAT_H = @as(c_int, 1);

@@ -64,7 +64,7 @@ pub export fn main(argc: c_int, argv: [*]const [*:0]const u8) callconv(.c) c_int
         _ = fprintf(stderr, "JENT_IOCSTATUS with zero-length buffer succeeded\n");
         return 1;
     }
-    if (__errno_location().* != @backingInt(linux.E.OVERFLOW)) {
+    if (__errno_location().* != 75) {
         perror("JENT_IOCSTATUS (probe)");
         return 1;
     }

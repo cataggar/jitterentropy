@@ -26,55 +26,22 @@ const RLimit = extern struct {
     maximum: usize,
 };
 
-const Handle = ?*anyopaque;
-const StartupInfoW = extern struct {
-    size: u32,
-    reserved: ?[*:0]u16,
-    desktop: ?[*:0]u16,
-    title: ?[*:0]u16,
-    x: u32,
-    y: u32,
-    x_size: u32,
-    y_size: u32,
-    x_count_chars: u32,
-    y_count_chars: u32,
-    fill_attribute: u32,
-    flags: u32,
-    show_window: u16,
-    reserved2_size: u16,
-    reserved2: ?[*]u8,
-    std_input: Handle,
-    std_output: Handle,
-    std_error: Handle,
-};
-const ProcessInformation = extern struct {
-    process: Handle,
-    thread: Handle,
-    process_id: u32,
-    thread_id: u32,
+const PAGE_NOACCESS: u32 = 0x01;
+const MemoryBasicInformation = extern struct {
+    base_address: ?*anyopaque,
+    allocation_base: ?*anyopaque,
+    allocation_protect: u32,
+    region_size: usize,
+    state: u32,
+    protect: u32,
+    memory_type: u32,
 };
 
-extern "kernel32" fn GetModuleFileNameW(
-    module: Handle,
-    filename: [*]u16,
-    size: u32,
-) callconv(.winapi) u32;
-extern "kernel32" fn GetCommandLineW() callconv(.winapi) [*:0]const u16;
-extern "kernel32" fn CreateProcessW(
-    application_name: ?[*:0]const u16,
-    command_line: [*:0]u16,
-    process_attributes: ?*anyopaque,
-    thread_attributes: ?*anyopaque,
-    inherit_handles: i32,
-    creation_flags: u32,
-    environment: ?*anyopaque,
-    current_directory: ?[*:0]const u16,
-    startup_info: *StartupInfoW,
-    process_information: *ProcessInformation,
-) callconv(.winapi) i32;
-extern "kernel32" fn WaitForSingleObject(handle: Handle, milliseconds: u32) callconv(.winapi) u32;
-extern "kernel32" fn GetExitCodeProcess(handle: Handle, exit_code: *u32) callconv(.winapi) i32;
-extern "kernel32" fn CloseHandle(handle: Handle) callconv(.winapi) i32;
+extern "kernel32" fn VirtualQuery(
+    address: ?*const anyopaque,
+    buffer: *MemoryBasicInformation,
+    length: usize,
+) callconv(.winapi) usize;
 
 fn fail(comptime fmt: []const u8, args: anytype) noreturn {
     std.debug.print("FAIL: " ++ fmt ++ "\n", args);
@@ -101,80 +68,6 @@ fn readInChild(address: *volatile u8) ?bool {
     var status: c_int = 0;
     if (waitpid(pid, &status, 0) != pid) return null;
     return !((status & 0x7f) == 0 and ((status >> 8) & 0xff) == 0);
-}
-
-fn windowsFaultChild(trailing: bool) noreturn {
-    const page_size = jent_pagesize();
-    const raw = jent_zalloc(page_size, 0) orelse std.process.exit(2);
-    const payload: [*]volatile u8 = @ptrCast(raw);
-    const address = if (trailing) payload + page_size else payload - 1;
-    _ = address[0];
-    jent_zfree(raw, page_size);
-    std.process.exit(0);
-}
-
-fn windowsGuardFault(argument: []const u8) ?bool {
-    var executable: [32768]u16 = undefined;
-    const executable_len = GetModuleFileNameW(null, &executable, executable.len);
-    if (executable_len == 0 or executable_len >= executable.len) return null;
-    executable[executable_len] = 0;
-
-    var command_line: [32768]u16 = undefined;
-    var used: usize = 0;
-    command_line[used] = '"';
-    used += 1;
-    @memcpy(command_line[used..][0..executable_len], executable[0..executable_len]);
-    used += executable_len;
-    command_line[used] = '"';
-    used += 1;
-    command_line[used] = ' ';
-    used += 1;
-    for (argument) |byte| {
-        command_line[used] = byte;
-        used += 1;
-    }
-
-    command_line[used] = 0;
-
-    var startup: StartupInfoW = std.mem.zeroes(StartupInfoW);
-    startup.size = @sizeOf(StartupInfoW);
-    var process: ProcessInformation = undefined;
-    if (CreateProcessW(
-        @ptrCast(&executable),
-        @ptrCast(&command_line),
-        null,
-        null,
-        0,
-        0,
-        null,
-        null,
-        &startup,
-        &process,
-    ) == 0) return null;
-    defer _ = CloseHandle(process.thread);
-    defer _ = CloseHandle(process.process);
-
-    if (WaitForSingleObject(process.process, std.math.maxInt(u32)) != 0) return null;
-    var exit_code: u32 = 0;
-    if (GetExitCodeProcess(process.process, &exit_code) == 0) return null;
-    return exit_code == 0xc0000005;
-}
-
-fn windowsCommandLineContains(needle: []const u8) bool {
-    const command_line = std.mem.span(GetCommandLineW());
-    if (needle.len > command_line.len) return false;
-    var start: usize = 0;
-    while (start + needle.len <= command_line.len) : (start += 1) {
-        var equal = true;
-        for (needle, 0..) |byte, index| {
-            if (command_line[start + index] != byte) {
-                equal = false;
-                break;
-            }
-        }
-        if (equal) return true;
-    }
-    return false;
 }
 
 fn testMemory() void {
@@ -241,14 +134,18 @@ fn testGuardPages() void {
     check(@intFromPtr(payload) % page_size == 0, "the payload starts on a page boundary");
 
     if (builtin.os.tag == .windows) {
-        const below = windowsGuardFault("--fault-leading");
-        const above = windowsGuardFault("--fault-trailing");
-        if (below == null or above == null) {
-            harness.skipOrExit(@src(), "the guard pages: no child process to fault in", .{});
-        } else {
-            check(below.?, "the page below the payload faults");
-            check(above.?, "the page above the payload faults");
-        }
+        var mbi: MemoryBasicInformation = std.mem.zeroes(MemoryBasicInformation);
+        check(
+            VirtualQuery(payload - page_size, &mbi, @sizeOf(MemoryBasicInformation)) == @sizeOf(MemoryBasicInformation) and
+                mbi.protect == PAGE_NOACCESS,
+            "the page below the payload is PAGE_NOACCESS",
+        );
+        mbi = std.mem.zeroes(MemoryBasicInformation);
+        check(
+            VirtualQuery(payload + page_size, &mbi, @sizeOf(MemoryBasicInformation)) == @sizeOf(MemoryBasicInformation) and
+                mbi.protect == PAGE_NOACCESS,
+            "the page above the payload is PAGE_NOACCESS",
+        );
     } else {
         const readable = readInChild(@ptrCast(payload));
         const below = readInChild(@ptrCast(payload - 1));
@@ -269,11 +166,6 @@ fn testGuardPages() void {
 }
 
 pub fn main() void {
-    if (builtin.os.tag == .windows) {
-        if (windowsCommandLineContains("--fault-leading")) windowsFaultChild(false);
-        if (windowsCommandLineContains("--fault-trailing")) windowsFaultChild(true);
-    }
-
     harness.resetCounters();
     testMemory();
     testGuardPages();

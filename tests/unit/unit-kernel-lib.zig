@@ -14,12 +14,12 @@ const std = @import("std");
 const linux = std.os.linux;
 const kern = @import("jitterentropy_kernel");
 
-const EBADF: c_int = @backingInt(linux.E.BADF);
-const EINVAL: c_int = @backingInt(linux.E.INVAL);
-const ENAMETOOLONG: c_int = @backingInt(linux.E.NAMETOOLONG);
-const ENOENT: c_int = @backingInt(linux.E.NOENT);
-const ENOTTY: c_int = @backingInt(linux.E.NOTTY);
-const EOVERFLOW: c_int = @backingInt(linux.E.OVERFLOW);
+const EBADF: c_int = 9;
+const EINVAL: c_int = 22;
+const ENAMETOOLONG: c_int = 36;
+const ENOENT: c_int = 2;
+const ENOTTY: c_int = 25;
+const EOVERFLOW: c_int = 75;
 
 const FILE = opaque {};
 extern "c" var stdout: *FILE;

@@ -58,14 +58,18 @@ pub const JENT_IDENT_LEN: usize = 160;
 pub const JENT_TYPE_LEN: usize = 16;
 
 const Errno = struct {
-    const NOENT: i32 = if (builtin.os.tag == .windows) 2 else @backingInt(std.posix.E.NOENT);
-    const IO: i32 = if (builtin.os.tag == .windows) 5 else @backingInt(std.posix.E.IO);
-    const AGAIN: i32 = if (builtin.os.tag == .windows) 11 else @backingInt(std.posix.E.AGAIN);
-    const NOMEM: i32 = if (builtin.os.tag == .windows) 12 else @backingInt(std.posix.E.NOMEM);
-    const FAULT: i32 = if (builtin.os.tag == .windows) 14 else @backingInt(std.posix.E.FAULT);
-    const INVAL: i32 = if (builtin.os.tag == .windows) 22 else @backingInt(std.posix.E.INVAL);
-    const NOSYS: i32 = if (builtin.os.tag == .windows) 40 else @backingInt(std.posix.E.NOSYS);
-    const NODATA: i32 = if (builtin.os.tag == .linux) @backingInt(std.posix.E.NODATA) else 61;
+    const NOENT: i32 = 2;
+    const IO: i32 = 5;
+    const AGAIN: i32 = if (builtin.os.tag == .linux or builtin.os.tag == .windows or builtin.os.tag == .illumos) 11 else 35;
+    const NOMEM: i32 = 12;
+    const FAULT: i32 = 14;
+    const INVAL: i32 = 22;
+    const NOSYS: i32 = switch (builtin.os.tag) {
+        .linux => 38,
+        .windows => 40,
+        else => 78,
+    };
+    const NODATA: i32 = 61;
 };
 
 const FILE = opaque {};
