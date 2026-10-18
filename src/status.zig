@@ -8,9 +8,11 @@ const arch_timer = @import("arch/timer.zig");
 const StatusWriter = struct {
     buf: [*]u8,
     buflen: usize,
+    len: usize = 0,
     truncated: bool = false,
 
     fn init(buf: [*]u8, buflen: usize) StatusWriter {
+        buf[0] = 0;
         var writer = StatusWriter{ .buf = buf, .buflen = buflen };
         writer.writeInitial("{\n");
         return writer;
@@ -20,17 +22,16 @@ const StatusWriter = struct {
         const copied = @min(text.len, self.buflen - 1);
         @memcpy(self.buf[0..copied], text[0..copied]);
         self.buf[copied] = 0;
+        self.len = copied;
         if (text.len >= self.buflen) self.truncated = true;
     }
 
     fn used(self: *const StatusWriter) usize {
-        var len: usize = 0;
-        while (len < self.buflen and self.buf[len] != 0) : (len += 1) {}
-        return len;
+        return self.len;
     }
 
     fn add(self: *StatusWriter, text: []const u8) void {
-        const len = self.used();
+        const len = self.len;
         if (len + 1 >= self.buflen) {
             self.truncated = true;
             return;
@@ -39,7 +40,8 @@ const StatusWriter = struct {
         const available = self.buflen - len;
         const copied = @min(text.len, available - 1);
         @memcpy(self.buf[len .. len + copied], text[0..copied]);
-        self.buf[len + copied] = 0;
+        self.len = len + copied;
+        self.buf[self.len] = 0;
         if (text.len >= available) self.truncated = true;
     }
 
@@ -207,8 +209,29 @@ pub fn jent_entropy_collector_hashloops(ec: ?*const RandData) callconv(.c) c_uin
 test "status writer matches snprintf truncation semantics" {
     var buf: [3]u8 = undefined;
     var writer = StatusWriter.init(&buf, buf.len);
+    try std.testing.expectEqual(@as(usize, 2), writer.used());
     try std.testing.expectEqualStrings("{\n", std.mem.sliceTo(buf[0..], 0));
     writer.add("x");
     try std.testing.expect(writer.truncated);
+    try std.testing.expectEqual(@as(usize, 2), writer.used());
     try std.testing.expectEqualStrings("{\n", std.mem.sliceTo(buf[0..], 0));
+
+    var exact: [6]u8 = @splat(0xaa);
+    writer = StatusWriter.init(&exact, exact.len);
+    try std.testing.expect(!writer.truncated);
+    try std.testing.expectEqual(@as(usize, 2), writer.used());
+    writer.add("abc");
+    try std.testing.expect(!writer.truncated);
+    try std.testing.expectEqual(@as(usize, 5), writer.used());
+    try std.testing.expectEqualStrings("{\nabc", std.mem.sliceTo(&exact, 0));
+    writer.add("d");
+    try std.testing.expect(writer.truncated);
+    try std.testing.expectEqual(@as(usize, 5), writer.used());
+    try std.testing.expectEqualStrings("{\nabc", std.mem.sliceTo(&exact, 0));
+
+    var minimal: [1]u8 = @splat(0xaa);
+    writer = StatusWriter.init(&minimal, minimal.len);
+    try std.testing.expect(writer.truncated);
+    try std.testing.expectEqual(@as(usize, 0), writer.used());
+    try std.testing.expectEqual(@as(u8, 0), minimal[0]);
 }

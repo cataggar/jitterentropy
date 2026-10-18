@@ -253,9 +253,11 @@ pub fn jent_health_failure_reset(ec_ptr: *?*RandData, startup: c_int) callconv(.
     if (old_ec.maxMemSet() == 0) flags = updateMemsize(flags, 1);
     flags = updateHashloop(flags, 1);
 
-    while (jent_entropy_init_ex(osr, flags) != 0) {
-        osr +%= 1;
-        if (osr > i.JENT_MAX_OSR) return -1;
+    if (i.jent_atomic_load_int(&jent_selftest_run) == 0) {
+        while (jent_entropy_init_ex(osr, flags) != 0) {
+            osr +%= 1;
+            if (osr > i.JENT_MAX_OSR) return -1;
+        }
     }
 
     var new_ec = jent_entropy_collector_alloc_internal(osr, flags) orelse return -1;
@@ -583,4 +585,15 @@ test "configuration decoding" {
     try std.testing.expectEqual(@as(c_uint, i.JENT_MIN_OSR), ensure_osr_is_at_least_minimal(0));
     try std.testing.expectEqual(@as(u32, 1024), jent_memsize(i.JENT_MAX_MEMSIZE_1kB));
     try std.testing.expectEqual(@as(c_uint, 128), jent_hashloop_cnt(i.JENT_HASHLOOP_128));
+}
+
+test "health failure reset skips redundant selftest when already initialized" {
+    if (jent_entropy_init() != 0) return;
+    var ec: ?*RandData = jent_entropy_collector_alloc(0, 0) orelse return;
+    defer jent_entropy_collector_free(ec);
+    const osr_before = ec.?.osr;
+    try std.testing.expectEqual(@as(c_int, 0), jent_health_failure_reset(&ec, 0));
+    try std.testing.expectEqual(osr_before + 1, ec.?.osr);
+    try std.testing.expectEqual(@as(c_uint, 1), ec.?.reinit_count);
+    try std.testing.expect(i.jent_atomic_load_int(&jent_selftest_run) != 0);
 }

@@ -327,7 +327,14 @@ pub fn jent_get_cachesize_sysfs_dir(
             var file_buf: [640]u8 = undefined;
             var attr_buf: [64]u8 = undefined;
             const type_path = pathZ(&file_buf, "{s}/cpu{d}/cache/index{d}/type", .{ base, cpu, index }) orelse break;
-            const type_len = readSysfsAttr(type_path, &attr_buf) orelse break;
+            const type_len = readSysfsAttr(type_path, &attr_buf) orelse {
+                if (index == 0) {
+                    var dir_buf: [512]u8 = undefined;
+                    const cpu_path = pathZ(&dir_buf, "{s}/cpu{d}", .{ base, cpu }) orelse return;
+                    if (access(cpu_path, F_OK) != 0) return;
+                }
+                break;
+            };
             if (!cacheTypeIsData(attr_buf[0..type_len])) continue;
 
             const level_path = pathZ(&file_buf, "{s}/cpu{d}/cache/index{d}/level", .{ base, cpu, index }) orelse continue;
@@ -790,4 +797,17 @@ test "cache helpers" {
     try std.testing.expectEqual(@as(u64, 16_777_216), cacheRoundupFromSizes(32_768, 262_144, 8_388_608, true));
     try std.testing.expectEqual(@as(?u64, 8 * 1024 * 1024), parseCacheSize("8M\n", 3, 32));
     try std.testing.expectEqual(@as(u32, 5), parseSharedCpuMap("0000000f,00000001\n"));
+}
+
+test "sysfs dir scan stops immediately on missing cpu0 directory" {
+    var l1: u64 = 123;
+    var l2: u64 = 456;
+    var l3: u64 = 789;
+    const saved_mode = jent_fi_cache_sysconf_mode;
+    defer jent_fi_cache_sysconf_mode = saved_mode;
+    jent_fi_cache_sysconf_mode = 3;
+    jent_get_cachesize_sysfs_dir("/nonexistent/jent/cpu", &l1, &l2, &l3);
+    try std.testing.expectEqual(@as(u64, 0), l1);
+    try std.testing.expectEqual(@as(u64, 0), l2);
+    try std.testing.expectEqual(@as(u64, 0), l3);
 }
