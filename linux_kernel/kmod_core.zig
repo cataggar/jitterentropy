@@ -357,6 +357,7 @@ pub export fn jent_status_to_user(
     var status: StatusIoctl = undefined;
     if (jent_kshim_copy_from_user(&status, arg, @sizeOf(StatusIoctl)) != 0) return -EFAULT;
     if ((status.buf == 0) != (status.length == 0)) return -EINVAL;
+    if (status.buf > std.math.maxInt(usize)) return -EFAULT;
     const raw = jent_kshim_kvzalloc(JENT_STATUS_MAX_LEN) orelse return -ENOMEM;
     const buf: [*]u8 = @ptrCast(raw);
     defer jent_kshim_kvfree_sensitive(raw, JENT_STATUS_MAX_LEN);
@@ -368,7 +369,7 @@ pub export fn jent_status_to_user(
         if (jent_kshim_copy_to_user(arg, &status, @sizeOf(StatusIoctl)) != 0) return -EFAULT;
         return -EOVERFLOW;
     }
-    const user_buf: *anyopaque = @ptrFromInt(status.buf);
+    const user_buf: *anyopaque = @ptrFromInt(@as(usize, @intCast(status.buf)));
     if (jent_kshim_copy_to_user(user_buf, buf, len) != 0) return -EFAULT;
     status.length = @intCast(len);
     if (jent_kshim_copy_to_user(arg, &status, @sizeOf(StatusIoctl)) != 0) return -EFAULT;
@@ -407,17 +408,17 @@ pub export fn jent_status_to_log(
     return ret;
 }
 
-var selftest_runs: u64 = 0;
-var selftest_failures: u64 = 0;
+var selftest_runs: usize = 0;
+var selftest_failures: usize = 0;
 
 fn selftestExecute(ec: ?*RandData) c_int {
     const ret = jent_selftest(ec);
-    _ = @atomicRmw(u64, &selftest_runs, .Add, 1, .seq_cst);
+    _ = @atomicRmw(usize, &selftest_runs, .Add, 1, .seq_cst);
     if (ret == 0) {
         if (jent_verbose != 0) log(1, "jitterentropy: cryptographic self test passed\n", .{});
         return 0;
     }
-    _ = @atomicRmw(u64, &selftest_failures, .Add, 1, .seq_cst);
+    _ = @atomicRmw(usize, &selftest_failures, .Add, 1, .seq_cst);
     if (jent_kshim_fips_enabled() != 0) jent_kshim_panic_selftest(ret);
     log(3, "jitterentropy: cryptographic self test failed: {d}\n", .{ret});
     return -EFAULT;
@@ -483,13 +484,13 @@ const SelftestStats = extern struct {
 pub export fn jent_selftest_get_stats(stats: *SelftestStats) callconv(.c) void {
     stats.* = .{
         .interval = jent_kparam_selftest_interval,
-        .runs = @atomicLoad(u64, &selftest_runs, .seq_cst),
-        .failures = @atomicLoad(u64, &selftest_failures, .seq_cst),
+        .runs = @atomicLoad(usize, &selftest_runs, .seq_cst),
+        .failures = @atomicLoad(usize, &selftest_failures, .seq_cst),
     };
 }
 
 var open_instances: c_int = 0;
-var cumulative_opens: u64 = 0;
+var cumulative_opens: usize = 0;
 
 pub export fn jent_proc_instance_inc(max: u32) callconv(.c) bool {
     var current = @atomicLoad(c_int, &open_instances, .seq_cst);
@@ -500,7 +501,7 @@ pub export fn jent_proc_instance_inc(max: u32) callconv(.c) bool {
             current = observed;
         } else break;
     }
-    _ = @atomicRmw(u64, &cumulative_opens, .Add, 1, .seq_cst);
+    _ = @atomicRmw(usize, &cumulative_opens, .Add, 1, .seq_cst);
     return true;
 }
 
@@ -519,10 +520,10 @@ pub export fn jent_proc_exit() callconv(.c) void {
 pub export fn jent_zig_proc_statistics_show(seq: *SeqFile) callconv(.c) c_int {
     return seqPrint(seq, "{{\n\t\"charDevice\": {{\n\t\t\"openInstances\": {d},\n\t\t\"cumulativeOpens\": {d}\n\t}},\n\t\"selfTest\": {{\n\t\t\"intervalSeconds\": {d},\n\t\t\"runs\": {d},\n\t\t\"failures\": {d}\n\t}}\n}}\n", .{
         @atomicLoad(c_int, &open_instances, .seq_cst),
-        @atomicLoad(u64, &cumulative_opens, .seq_cst),
+        @atomicLoad(usize, &cumulative_opens, .seq_cst),
         jent_kparam_selftest_interval,
-        @atomicLoad(u64, &selftest_runs, .seq_cst),
-        @atomicLoad(u64, &selftest_failures, .seq_cst),
+        @atomicLoad(usize, &selftest_runs, .seq_cst),
+        @atomicLoad(usize, &selftest_failures, .seq_cst),
     });
 }
 
