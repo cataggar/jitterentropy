@@ -1,6 +1,6 @@
 # The build context is the root of the source tree:
 #	docker build -f rngd/Dockerfile .
-FROM alpine
+FROM alpine:3.21
 
 RUN apk add --no-cache linux-headers zig
 
@@ -10,7 +10,7 @@ COPY . .
 # Static, so that the second stage needs nothing but the daemon.
 RUN zig build -Drngd=true -Dlinkage=static -Dtools=false --prefix /build
 
-FROM alpine
+FROM alpine:3.21
 
 COPY --from=0 /build/sbin/jitterentropy-rngd /usr/bin
 
