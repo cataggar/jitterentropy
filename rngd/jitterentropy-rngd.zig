@@ -93,11 +93,34 @@ const URANDOMDEV: [*:0]const u8 = "/dev/urandom";
 
 const FORCE_RESEED_WAKEUP: c_uint = 300; // Wakeup time: 5 minutes
 
-// Jitterentropy library flags
-const JENT_FORCE_INTERNAL_TIMER: c_uint = 1 << 2;
-const JENT_DISABLE_INTERNAL_TIMER: c_uint = 1 << 3;
-const JENT_FORCE_FIPS: c_uint = 1 << 4;
-const JENT_NTG1: c_uint = 1 << 7;
+// Jitterentropy library flags (must match jitterentropy.h and src/internal.zig)
+const JENT_DISABLE_STIR: c_uint = 1 << 0;
+const JENT_DISABLE_UNBIAS: c_uint = 1 << 1;
+const JENT_DISABLE_MEMORY_ACCESS: c_uint = 1 << 2;
+const JENT_FORCE_INTERNAL_TIMER: c_uint = 1 << 3;
+const JENT_DISABLE_INTERNAL_TIMER: c_uint = 1 << 4;
+const JENT_FORCE_FIPS: c_uint = 1 << 5;
+const JENT_NTG1: c_uint = 1 << 6;
+const JENT_CACHE_ALL: c_uint = 1 << 7;
+const JENT_FORCE_SECURE_MEM: c_uint = 1 << 8;
+const JENT_MAX_MEMSIZE_OFFSET: c_uint = 9;
+const JENT_FLAGS_TO_HASHLOOP_SHIFT: c_uint = 23;
+const JENT_FLAGS_TO_MEMSIZE_SHIFT: c_uint = 27;
+
+comptime {
+    std.debug.assert(JENT_DISABLE_STIR == (1 << 0));
+    std.debug.assert(JENT_DISABLE_UNBIAS == (1 << 1));
+    std.debug.assert(JENT_DISABLE_MEMORY_ACCESS == (1 << 2));
+    std.debug.assert(JENT_FORCE_INTERNAL_TIMER == (1 << 3));
+    std.debug.assert(JENT_DISABLE_INTERNAL_TIMER == (1 << 4));
+    std.debug.assert(JENT_FORCE_FIPS == (1 << 5));
+    std.debug.assert(JENT_NTG1 == (1 << 6));
+    std.debug.assert(JENT_CACHE_ALL == (1 << 7));
+    std.debug.assert(JENT_FORCE_SECURE_MEM == (1 << 8));
+    std.debug.assert(JENT_MAX_MEMSIZE_OFFSET == 9);
+    std.debug.assert(JENT_FLAGS_TO_HASHLOOP_SHIFT == 23);
+    std.debug.assert(JENT_FLAGS_TO_MEMSIZE_SHIFT == 27);
+}
 
 // Linux random ioctls (<linux/random.h>)
 const RNDADDENTROPY: u32 = linux.IOCTL.IOW('R', 0x03, [2]c_int);
@@ -133,6 +156,8 @@ extern fn jent_entropy_collector_free(entropy_collector: ?*rand_data) callconv(.
 extern fn jent_read_entropy(entropy_collector: ?*rand_data, data: [*]u8, len: usize) callconv(.c) isize;
 extern fn jent_read_entropy_safe(entropy_collector: *?*rand_data, data: [*]u8, len: usize) callconv(.c) isize;
 extern fn jent_status(entropy_collector: *const rand_data, buf: [*]u8, buflen: usize) callconv(.c) c_int;
+extern fn mlock(addr: *const anyopaque, len: usize) callconv(.c) c_int;
+extern fn munlock(addr: *const anyopaque, len: usize) callconv(.c) c_int;
 
 const Option = extern struct {
     name: ?[*:0]const u8,
@@ -346,12 +371,19 @@ fn dolog(severity: c_uint, comptime fmt: []const u8, args: anytype) void {
     }
 }
 
-inline fn memset_secure(s: []u8) void {
-    @memset(s, 0);
+fn jent_memset_secure(s: ?*anyopaque, len: usize) void {
+    const volatile_buf: [*]volatile u8 = @ptrCast(s orelse return);
+    for (0..len) |i| {
+        volatile_buf[i] = 0;
+    }
     asm volatile (""
         :
-        : [p] "r" (s.ptr),
+        : [p] "r" (volatile_buf),
         : .{ .memory = true });
+}
+
+inline fn memset_secure(s: []u8) void {
+    jent_memset_secure(@ptrCast(s.ptr), s.len);
 }
 
 // ===========================================================================
@@ -695,6 +727,7 @@ const FdSet = extern struct {
     fds_bits: [16]c_ulong = @splat(0),
 
     fn set(self: *FdSet, fd: c_int) void {
+        if (fd < 0 or fd >= 1024) return;
         const ufd: usize = @intCast(fd);
         const bits_per_word = @bitSizeOf(c_ulong);
         self.fds_bits[ufd / bits_per_word] |= @as(c_ulong, 1) << @intCast(ufd % bits_per_word);
@@ -1006,6 +1039,7 @@ fn alloc_rng() void {
     if (ptr == null) {
         dolog(JENT_LOG_ERR, "Cannot allocate memory for random pool info", .{});
     }
+    _ = mlock(ptr.?, @sizeOf(RandPoolInfo));
     const rnd: *RandPoolInfo = @ptrCast(@alignCast(ptr.?));
     rnd.* = std.mem.zeroes(RandPoolInfo);
     ctx.rnd = rnd;
@@ -1057,8 +1091,10 @@ fn dealloc_rng() void {
 
     if (ctx.rnd) |rnd| {
         const bytes: [*]u8 = @ptrCast(rnd);
+        jent_memset_secure(@ptrCast(rnd), @sizeOf(RandPoolInfo));
         memset_secure(bytes[0..@sizeOf(RandPoolInfo)]);
-        c.free(rnd);
+        _ = munlock(@ptrCast(rnd), @sizeOf(RandPoolInfo));
+        c.free(@ptrCast(rnd));
         ctx.rnd = null;
     }
 }
@@ -1197,7 +1233,13 @@ fn daemonize() void {
     detect_color();
 }
 
-pub export fn main(argc: c_int, argv: [*]?[*:0]u8) callconv(.c) c_int {
+comptime {
+    if (!@import("builtin").is_test) {
+        @export(&main, .{ .name = "main" });
+    }
+}
+
+pub fn main(argc: c_int, argv: [*]?[*:0]u8) callconv(.c) c_int {
     detect_color();
 
     parse_opts(argc, argv);
@@ -1273,3 +1315,36 @@ pub export fn main(argc: c_int, argv: [*]?[*:0]u8) callconv(.c) c_int {
     dealloc();
     return 0;
 }
+
+test "rngd JENT_* flag bit positions match jitterentropy.h" {
+    try std.testing.expectEqual(@as(c_uint, 1 << 0), JENT_DISABLE_STIR);
+    try std.testing.expectEqual(@as(c_uint, 1 << 1), JENT_DISABLE_UNBIAS);
+    try std.testing.expectEqual(@as(c_uint, 1 << 2), JENT_DISABLE_MEMORY_ACCESS);
+    try std.testing.expectEqual(@as(c_uint, 1 << 3), JENT_FORCE_INTERNAL_TIMER);
+    try std.testing.expectEqual(@as(c_uint, 1 << 4), JENT_DISABLE_INTERNAL_TIMER);
+    try std.testing.expectEqual(@as(c_uint, 1 << 5), JENT_FORCE_FIPS);
+    try std.testing.expectEqual(@as(c_uint, 1 << 6), JENT_NTG1);
+    try std.testing.expectEqual(@as(c_uint, 1 << 7), JENT_CACHE_ALL);
+    try std.testing.expectEqual(@as(c_uint, 1 << 8), JENT_FORCE_SECURE_MEM);
+    try std.testing.expectEqual(@as(c_uint, 9), JENT_MAX_MEMSIZE_OFFSET);
+    try std.testing.expectEqual(@as(c_uint, 23), JENT_FLAGS_TO_HASHLOOP_SHIFT);
+    try std.testing.expectEqual(@as(c_uint, 27), JENT_FLAGS_TO_MEMSIZE_SHIFT);
+}
+
+test "FdSet.set bounds check prevents out-of-range indexing" {
+    var fds: FdSet = .{};
+    fds.set(-1);
+    fds.set(-100);
+    fds.set(1024);
+    fds.set(4096);
+    for (fds.fds_bits) |word| {
+        try std.testing.expectEqual(@as(c_ulong, 0), word);
+    }
+    fds.set(0);
+    fds.set(1023);
+    try std.testing.expect((fds.fds_bits[0] & 1) != 0);
+    const last_word = 1023 / @bitSizeOf(c_ulong);
+    const last_bit: std.math.Log2Int(c_ulong) = @intCast(1023 % @bitSizeOf(c_ulong));
+    try std.testing.expect((fds.fds_bits[last_word] & (@as(c_ulong, 1) << last_bit)) != 0);
+}
+

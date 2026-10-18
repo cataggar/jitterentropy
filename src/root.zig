@@ -112,6 +112,131 @@ fn declarationName(comptime declaration: anytype) []const u8 {
     };
 }
 
+const CAbiWrappers = struct {
+    const EINVAL: c_int = 22;
+
+    pub fn jent_notime_init(ctx: ?*?*anyopaque) callconv(.c) c_int {
+        const ptr = ctx orelse return -EINVAL;
+        return timer.jent_notime_init(ptr);
+    }
+
+    pub fn jent_notime_enable(ec: ?*internal.rand_data, flags: c_uint) callconv(.c) c_int {
+        const collector = ec orelse return internal.ENOTIME;
+        return timer.jent_notime_enable(collector, flags);
+    }
+
+    pub fn jent_notime_settick(ec: ?*internal.rand_data) callconv(.c) c_int {
+        const collector = ec orelse return -EINVAL;
+        return timer.jent_notime_settick(collector);
+    }
+
+    pub fn jent_notime_unsettick(ec: ?*internal.rand_data) callconv(.c) void {
+        const collector = ec orelse return;
+        timer.jent_notime_unsettick(collector);
+    }
+
+    pub fn jent_get_nstime_internal(ec: ?*internal.rand_data, out: ?*u64) callconv(.c) void {
+        const collector = ec orelse return;
+        const out_ptr = out orelse return;
+        timer.jent_get_nstime_internal(collector, out_ptr);
+    }
+
+    pub fn jent_thread_pin_to_cpu(cpu: c_ulong) callconv(.c) c_int {
+        if (cpu > std.math.maxInt(c_uint)) return -EINVAL;
+        return arch_thread.jent_thread_pin_to_cpu(cpu);
+    }
+
+    pub fn jent_notime_thread_create(
+        ctx: ?*internal.jent_notime_ctx,
+        start_routine: internal.jent_notime_start_routine,
+        arg: ?*anyopaque,
+    ) callconv(.c) c_int {
+        const ptr = ctx orelse return -EINVAL;
+        return arch_thread.jent_notime_thread_create(ptr, start_routine, arg);
+    }
+
+    pub fn jent_notime_thread_join(ctx: ?*internal.jent_notime_ctx) callconv(.c) void {
+        const ptr = ctx orelse return;
+        arch_thread.jent_notime_thread_join(ptr);
+    }
+
+    pub fn jent_status(ec: ?*const internal.rand_data, buf: ?[*:0]u8, buflen: usize) callconv(.c) c_int {
+        const ptr = buf orelse return -1;
+        if (buflen == 0) return -1;
+        const max_addr_len = std.math.maxInt(usize) - @intFromPtr(ptr);
+        const safe_len = @min(buflen, max_addr_len);
+        return status.jent_status(ec, ptr, safe_len);
+    }
+
+    pub fn jent_apt_reset(ec: ?*internal.rand_data, delta_masked: u64) callconv(.c) void {
+        const collector = ec orelse return;
+        health.jent_apt_reset(collector, delta_masked);
+    }
+
+    pub fn jent_apt_insert(ec: ?*internal.rand_data, delta_masked: u64) callconv(.c) void {
+        const collector = ec orelse return;
+        health.jent_apt_insert(collector, delta_masked);
+    }
+
+    pub fn jent_rct_insert(ec: ?*internal.rand_data, stuck: c_uint) callconv(.c) void {
+        const collector = ec orelse return;
+        health.jent_rct_insert(collector, stuck);
+    }
+
+    pub fn jent_lag_init(ec: ?*internal.rand_data, osr: c_uint) callconv(.c) void {
+        const collector = ec orelse return;
+        health.jent_lag_init(collector, osr);
+    }
+
+    pub fn jent_health_init(ec: ?*internal.rand_data, inittype: internal.jent_health_init_type) callconv(.c) c_int {
+        const collector = ec orelse return 0;
+        return health.jent_health_init(collector, inittype);
+    }
+
+    pub fn jent_Validation_Insert(ec: ?*internal.rand_data, time: u64, stuck: c_int) callconv(.c) void {
+        const collector = ec orelse return;
+        noise.jent_Validation_Insert(collector, time, stuck);
+    }
+
+    pub fn jent_measure_jitter(
+        ec: ?*internal.rand_data,
+        loop_cnt: u64,
+        ret_current_delta: ?*u64,
+        health_check: c_int,
+    ) callconv(.c) c_uint {
+        const collector = ec orelse return 1;
+        return noise.jent_measure_jitter(collector, loop_cnt, ret_current_delta, health_check);
+    }
+
+    pub fn jent_random_data_OneByte(ec: ?*internal.rand_data) callconv(.c) void {
+        const collector = ec orelse return;
+        noise.jent_random_data_OneByte(collector);
+    }
+
+    pub fn jent_random_data(ec: ?*internal.rand_data) callconv(.c) void {
+        const collector = ec orelse return;
+        noise.jent_random_data(collector);
+    }
+
+    pub fn jent_sha3_update(ctx: ?*internal.jent_sha_ctx, in: ?[*]const u8, inlen: usize) callconv(.c) void {
+        const state = ctx orelse return;
+        if (inlen == 0) return;
+        const ptr = in orelse return;
+        const max_addr_len = std.math.maxInt(usize) - @intFromPtr(ptr);
+        if (inlen > max_addr_len) return;
+        sha3.jent_sha3_update(state, ptr, inlen);
+    }
+
+    pub fn jent_drbg_init_ex(ctx: ?*internal.jent_sha_ctx, personalization: ?[*]const u8, personalization_len: usize) callconv(.c) void {
+        const state = ctx orelse return;
+        if (personalization) |ptr| {
+            const max_addr_len = std.math.maxInt(usize) - @intFromPtr(ptr);
+            if (personalization_len > max_addr_len) return;
+        }
+        sha3.jent_drbg_init_ex(state, personalization, personalization_len);
+    }
+};
+
 fn exportNamespaceFunctions(comptime namespace: type) void {
     inline for (std.meta.declarations(namespace)) |declaration| {
         const name = declarationName(declaration);
@@ -125,7 +250,10 @@ fn exportNamespaceFunctions(comptime namespace: type) void {
         if (std.mem.eql(u8, name, "jent_random_data") and !build_options.export_random_data) continue;
         const is_public = isPublicApiSymbol(name) and build_options.export_public_api;
         if (!is_public and !build_options.export_internals) continue;
-        const value = @field(namespace, name);
+        const value = if (@hasDecl(CAbiWrappers, name))
+            @field(CAbiWrappers, name)
+        else
+            @field(namespace, name);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         @export(&value, .{
             .name = name,
@@ -337,6 +465,80 @@ pub const jent_startup_state = internal.jent_startup_state;
 pub const jent_health_init_type = internal.jent_health_init_type;
 pub const jent_sha_ctx = internal.jent_sha_ctx;
 pub const rand_data = internal.rand_data;
+
+pub const jent_entropy_init = base.jent_entropy_init;
+pub const jent_entropy_init_ex = base.jent_entropy_init_ex;
+pub const jent_entropy_collector_alloc = base.jent_entropy_collector_alloc;
+pub const jent_entropy_collector_free = base.jent_entropy_collector_free;
+pub const jent_read_entropy = base.jent_read_entropy;
+pub const jent_read_entropy_safe = base.jent_read_entropy_safe;
+pub const jent_entropy_switch_notime_impl = base.jent_entropy_switch_notime_impl;
+pub const jent_entropy_set_notime_cpu = base.jent_entropy_set_notime_cpu;
+pub const jent_set_fips_failure_callback = base.jent_set_fips_failure_callback;
+pub const jent_version = base.jent_version;
+pub const jent_status = CAbiWrappers.jent_status;
+pub const jent_notime_init = CAbiWrappers.jent_notime_init;
+pub const jent_notime_fini = timer.jent_notime_fini;
+pub const jent_selftest = base.jent_selftest;
+pub const jent_entropy_collector_uuid = status.jent_entropy_collector_uuid;
+pub const jent_entropy_collector_osr = status.jent_entropy_collector_osr;
+pub const jent_entropy_collector_flags = status.jent_entropy_collector_flags;
+pub const jent_entropy_collector_memsize = status.jent_entropy_collector_memsize;
+pub const jent_entropy_collector_health_failure = status.jent_entropy_collector_health_failure;
+pub const jent_entropy_collector_reinitializations = status.jent_entropy_collector_reinitializations;
+pub const jent_entropy_collector_read_invocations = status.jent_entropy_collector_read_invocations;
+pub const jent_entropy_collector_bytes_output = status.jent_entropy_collector_bytes_output;
+pub const jent_entropy_collector_hashloops = status.jent_entropy_collector_hashloops;
+pub const jent_secure_memory_supported = arch_memory.jent_secure_memory_supported;
+
+test "JENT_* public flag bit values and C ABI constants" {
+    try std.testing.expectEqual(@as(c_uint, 1 << 0), JENT_DISABLE_STIR);
+    try std.testing.expectEqual(@as(c_uint, 1 << 1), JENT_DISABLE_UNBIAS);
+    try std.testing.expectEqual(@as(c_uint, 1 << 2), JENT_DISABLE_MEMORY_ACCESS);
+    try std.testing.expectEqual(@as(c_uint, 1 << 3), JENT_FORCE_INTERNAL_TIMER);
+    try std.testing.expectEqual(@as(c_uint, 1 << 4), JENT_DISABLE_INTERNAL_TIMER);
+    try std.testing.expectEqual(@as(c_uint, 1 << 5), JENT_FORCE_FIPS);
+    try std.testing.expectEqual(@as(c_uint, 1 << 6), JENT_NTG1);
+    try std.testing.expectEqual(@as(c_uint, 1 << 7), JENT_CACHE_ALL);
+    try std.testing.expectEqual(@as(c_uint, 1 << 8), JENT_FORCE_SECURE_MEM);
+    try std.testing.expectEqual(@as(c_uint, 1 << 22), JENT_INT_MEASURE_CLOCK);
+    try std.testing.expectEqual(@as(c_uint, 9), JENT_MAX_MEMSIZE_OFFSET);
+    try std.testing.expectEqual(@as(u5, 23), JENT_FLAGS_TO_HASHLOOP_SHIFT);
+    try std.testing.expectEqual(@as(u5, 27), JENT_FLAGS_TO_MEMSIZE_SHIFT);
+}
+
+test "C ABI entrypoints safely handle null and out-of-range inputs in Debug mode" {
+    var dummy_buf: [64]u8 = @splat(0);
+    var null_ec: ?*rand_data = null;
+
+    // Negative ssize_t cast to size_t (SIZE_MAX / top-bit-set lengths) with null collector or buffer
+    const neg_one_usize: usize = @bitCast(@as(isize, -1));
+    const min_isize_usize: usize = @bitCast(@as(isize, std.math.minInt(isize)));
+    try std.testing.expectEqual(JENT_ERR_EINVAL, jent_read_entropy(null, &dummy_buf, neg_one_usize));
+    try std.testing.expectEqual(JENT_ERR_EINVAL, jent_read_entropy(null, &dummy_buf, min_isize_usize));
+    try std.testing.expectEqual(JENT_ERR_EINVAL, jent_read_entropy_safe(null, &dummy_buf, neg_one_usize));
+    try std.testing.expectEqual(JENT_ERR_EINVAL, jent_read_entropy_safe(&null_ec, &dummy_buf, neg_one_usize));
+
+    // Extreme OSR and flag values (including negative int cast to c_uint)
+    const neg_one_uint: c_uint = @bitCast(@as(c_int, -1));
+    try std.testing.expectEqual(EPROGERR, jent_entropy_init_ex(neg_one_uint, neg_one_uint));
+    try std.testing.expectEqual(EPROGERR, jent_entropy_init_ex(JENT_MAX_OSR + 1, 0));
+    try std.testing.expectEqual(@as(?*rand_data, null), jent_entropy_collector_alloc(neg_one_uint, neg_one_uint));
+    try std.testing.expectEqual(@as(?*rand_data, null), jent_entropy_collector_alloc(JENT_MAX_OSR + 1, 0));
+    try std.testing.expectEqual(
+        @as(?*rand_data, null),
+        jent_entropy_collector_alloc(0, JENT_FORCE_INTERNAL_TIMER | JENT_DISABLE_INTERNAL_TIMER),
+    );
+
+    // Null / out-of-range inputs on timer, thread, status, and uuid entrypoints
+    try std.testing.expectEqual(-CAbiWrappers.EINVAL, jent_notime_init(null));
+    jent_notime_fini(null);
+    try std.testing.expectEqual(-CAbiWrappers.EINVAL, CAbiWrappers.jent_thread_pin_to_cpu(std.math.maxInt(c_ulong)));
+    try std.testing.expectEqual(-CAbiWrappers.EINVAL, CAbiWrappers.jent_notime_thread_create(null, null, null));
+    CAbiWrappers.jent_notime_thread_join(null);
+    try std.testing.expectEqual(@as(c_int, -1), jent_status(null, null, neg_one_usize));
+    try std.testing.expectEqual(@as(c_int, -1), jent_entropy_collector_uuid(null, &dummy_buf, neg_one_usize));
+}
 
 test {
     std.testing.refAllDecls(@This());
