@@ -63,8 +63,13 @@ fn parseCount(text: [:0]const u8, what: [*:0]const u8) ?c_ulong {
     return value;
 }
 
-pub fn main(init: std.process.Init) u8 {
-    var args = std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa) catch
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
+pub fn main(init: std.process.Init.Minimal) u8 {
+    var args = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch
         return 1;
     defer args.deinit();
     const program = args.next() orelse "jitterentropy-hashtime";

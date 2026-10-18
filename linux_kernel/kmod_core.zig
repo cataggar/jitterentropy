@@ -46,14 +46,14 @@ const JENT_APT_FAILURE: u32 = 2;
 const JENT_LAG_FAILURE: u32 = 4;
 const JENT_RCT_MEM_FAILURE: u32 = 8;
 
-extern var jent_osr: u32;
-extern var jent_flags: u32;
-extern var jent_verbose: u32;
-extern var jent_kparam_ntg1: bool;
-extern var jent_kparam_force_fips: bool;
-extern var jent_kparam_cache_all: bool;
-extern var jent_kparam_max_memsize: u32;
-extern var jent_kparam_selftest_interval: u32;
+export var jent_osr: u32 = 0;
+export var jent_flags: u32 = 0;
+export var jent_verbose: u32 = 0;
+export var jent_kparam_ntg1: bool = false;
+export var jent_kparam_force_fips: bool = false;
+export var jent_kparam_cache_all: bool = false;
+export var jent_kparam_max_memsize: u32 = 0;
+export var jent_kparam_selftest_interval: u32 = 0;
 
 extern fn jent_version() callconv(.c) u32;
 extern fn jent_entropy_init_ex(osr: u32, flags: u32) callconv(.c) c_int;
@@ -106,10 +106,10 @@ extern fn jent_entropy_collector_free(ec: ?*RandData) callconv(.c) void;
 extern fn jent_read_entropy(ec: ?*RandData, data: ?[*]u8, len: usize) callconv(.c) isize;
 extern fn jent_read_entropy_safe(ec: *?*RandData, data: ?[*]u8, len: usize) callconv(.c) isize;
 
-extern var jent_kparam_max_instances: u32;
-extern var jent_kparam_hwrng_quality: u32;
-extern var jent_kparam_testing_osr: u32;
-extern var jent_kparam_testing_flags: u32;
+export var jent_kparam_max_instances: u32 = 256;
+export var jent_kparam_hwrng_quality: u32 = 0;
+export var jent_kparam_testing_osr: u32 = 0;
+export var jent_kparam_testing_flags: u32 = 0;
 
 fn log(comptime level: c_int, comptime fmt: []const u8, args: anytype) void {
     var buf: [768]u8 = undefined;

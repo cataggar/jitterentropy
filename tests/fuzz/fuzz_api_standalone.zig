@@ -20,6 +20,11 @@ fn runFile(path: [:0]const u8) c_int {
     return 0;
 }
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 pub fn main(init: std.process.Init.Minimal) u8 {
     var args = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch return 1;
     defer args.deinit();

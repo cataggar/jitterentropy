@@ -20,6 +20,7 @@ comptime {
 }
 
 const timer = @import("timer.zig");
+const internal_timer = i.build_options.internal_timer and !i.is_freestanding;
 
 pub var jent_selftest_run: c_int = 0;
 
@@ -32,43 +33,43 @@ pub fn jent_version() callconv(.c) c_uint {
 }
 
 fn notimeBlockSwitch() void {
-    if (i.build_options.internal_timer) timer.jent_notime_block_switch();
+    if (internal_timer) timer.jent_notime_block_switch();
 }
 
 fn notimeSetCpu(cpu: c_ulong) c_int {
-    if (i.build_options.internal_timer) return timer.jent_notime_set_cpu(cpu);
+    if (internal_timer) return timer.jent_notime_set_cpu(cpu);
     return -EOPNOTSUPP;
 }
 
 fn notimeSettick(ec: *RandData) c_int {
-    if (i.build_options.internal_timer) return timer.jent_notime_settick(ec);
+    if (internal_timer) return timer.jent_notime_settick(ec);
     return 0;
 }
 
 fn notimeUnsettick(ec: *RandData) void {
-    if (i.build_options.internal_timer) timer.jent_notime_unsettick(ec);
+    if (internal_timer) timer.jent_notime_unsettick(ec);
 }
 
 fn notimeEnable(ec: *RandData, flags: c_uint) c_int {
-    if (i.build_options.internal_timer) return timer.jent_notime_enable(ec, flags);
+    if (internal_timer) return timer.jent_notime_enable(ec, flags);
     return if (flags & i.JENT_FORCE_INTERNAL_TIMER != 0) i.EHEALTH else 0;
 }
 
 fn notimeDisable(ec: *RandData) void {
-    if (i.build_options.internal_timer) timer.jent_notime_disable(ec);
+    if (internal_timer) timer.jent_notime_disable(ec);
 }
 
 fn notimeSwitch(new_thread: ?*i.jent_notime_thread) c_int {
-    if (i.build_options.internal_timer) return timer.jent_notime_switch(new_thread);
+    if (internal_timer) return timer.jent_notime_switch(new_thread);
     return -EOPNOTSUPP;
 }
 
 fn notimeForce() void {
-    if (i.build_options.internal_timer) timer.jent_notime_force();
+    if (internal_timer) timer.jent_notime_force();
 }
 
 fn notimeForced() c_int {
-    if (i.build_options.internal_timer) return timer.jent_notime_forced();
+    if (internal_timer) return timer.jent_notime_forced();
     return 0;
 }
 
@@ -535,7 +536,7 @@ pub fn jent_entropy_init() callconv(.c) c_int {
     if (ret != 0) return ret;
 
     ret = jent_time_entropy_init(0, flags | i.JENT_DISABLE_INTERNAL_TIMER);
-    if (i.build_options.internal_timer and ret != 0)
+    if (internal_timer and ret != 0)
         ret = jent_time_entropy_init(0, flags | i.JENT_FORCE_INTERNAL_TIMER);
     ret = entropyInitCommonPost(ret);
     stackScrub();
@@ -558,7 +559,7 @@ pub fn jent_entropy_init_ex(osr: c_uint, input_flags: c_uint) callconv(.c) c_int
     ret = i.ENOTIME;
     if (flags & i.JENT_FORCE_INTERNAL_TIMER == 0)
         ret = jent_time_entropy_init(osr, flags | i.JENT_DISABLE_INTERNAL_TIMER);
-    if (i.build_options.internal_timer and ret != 0 and
+    if (internal_timer and ret != 0 and
         flags & (i.JENT_DISABLE_INTERNAL_TIMER | i.JENT_NTG1) == 0)
         ret = jent_time_entropy_init(osr, flags | i.JENT_FORCE_INTERNAL_TIMER);
     ret = entropyInitCommonPost(ret);

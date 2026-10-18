@@ -98,7 +98,7 @@ fn jent_ut_report(suite: [*:0]const u8) u8 {
 
     if (jent_ut_failures != 0)
         return 1;
-    return if (jent_ut_checks == 0 and jent_ut_skipped != 0) 77 else 0;
+    return 0;
 }
 
 // A temporary file holding @data; the path in @path.

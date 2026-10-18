@@ -4,6 +4,12 @@ const core = @import("jent");
 const record_options = @import("record_options");
 const internal = core.internal;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const c = struct {
     const FILE = opaque {};
 

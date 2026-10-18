@@ -1127,7 +1127,7 @@ test "C-ABI layout of jent_notime_thread and jent_notime_ctx matches C" {
 test "layout and bitfields of jent_sha_ctx" {
     const testing = std.testing;
 
-    try testing.expectEqual(@as(usize, 8), @alignOf(jent_sha_ctx));
+    try testing.expectEqual(@as(usize, @alignOf(u64)), @alignOf(jent_sha_ctx));
     try testing.expectEqual(@as(usize, 0), @offsetOf(jent_sha_ctx, "state"));
     try testing.expect(@offsetOf(jent_sha_ctx, "msg_len") >= 25 * @sizeOf(u64));
     try testing.expect(@offsetOf(jent_sha_ctx, "partial") > @offsetOf(jent_sha_ctx, "msg_len"));
@@ -1150,7 +1150,7 @@ test "layout and bitfields of jent_sha_ctx" {
 test "layout and bitfields of rand_data" {
     const testing = std.testing;
 
-    try testing.expectEqual(@as(usize, 8), @alignOf(rand_data));
+    try testing.expectEqual(@as(usize, @alignOf(u64)), @alignOf(rand_data));
     try testing.expectEqual(@as(usize, 0), @offsetOf(rand_data, "hash_state"));
     try testing.expect(@offsetOf(rand_data, "prev_time") >= @sizeOf(jent_sha_ctx));
     try testing.expect(@offsetOf(rand_data, "lag_scoreboard") > @offsetOf(rand_data, "lag_delta_history"));

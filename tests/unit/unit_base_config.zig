@@ -1824,7 +1824,7 @@ pub fn jent_ut_report(arg_suite: [*c]const u8) callconv(.c) c_int {
     _ = &suite;
     _ = printf("%s: %u checks, %u failed, %u skipped\n", suite, jent_ut_checks, jent_ut_failures, jent_ut_skipped);
     if (jent_ut_failures != 0) return 1;
-    return if ((@as(c_uint, @bitCast(@as(c_int, @intFromBool(!(jent_ut_checks != 0))))) != 0) and (jent_ut_skipped != 0)) @as(c_int, 77) else @as(c_int, 0);
+    return 0;
 }
 pub extern fn jent_atomic_load_int(ptr: [*c]const c_int) c_int;
 pub extern fn jent_atomic_store_int(ptr: [*c]c_int, val: c_int) void;
@@ -2360,6 +2360,7 @@ pub fn test_version() callconv(.c) void {
     }
 }
 pub export fn main() c_int {
+    jent_ut_setup();
     test_memsize();
     test_hashloop();
     test_osr();

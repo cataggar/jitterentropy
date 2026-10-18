@@ -3,6 +3,11 @@ const builtin = @import("builtin");
 const health = @import("jent").health;
 const internal = health.internal;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const FILE = opaque {};
 extern fn printf(format: [*:0]const u8, ...) callconv(.c) c_int;
 extern fn fopen(path: [*:0]const u8, mode: [*:0]const u8) callconv(.c) ?*FILE;

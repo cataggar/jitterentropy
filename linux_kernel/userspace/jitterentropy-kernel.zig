@@ -9,6 +9,12 @@ const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+
+pub const panic = std.debug.FullPanic(trapPanic);
+
 pub const JENT_KERNEL_DEVICE: [:0]const u8 = "/dev/jitterentropy";
 pub const JENT_KERNEL_STATUS_LEN: usize = 4096;
 pub const JENT_KERNEL_UUID_STRLEN: usize = 37;

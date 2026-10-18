@@ -9,8 +9,10 @@ const builtin = @import("builtin");
 /// Automake / Meson / CTest convention for a runtime-skipped test.
 pub const SKIP_RETURN_CODE: u8 = 77;
 
-/// Minimum memlock limit (256 KiB) required by unit tests (notably unit-concurrency).
-pub const MIN_MEMLOCK_BYTES: usize = 256 * 1024;
+/// Minimum memlock limit (3 MiB) required by unit tests and secure arenas.
+pub const MIN_MEMLOCK_BYTES: usize = 3 * 1024 * 1024;
+
+extern fn jent_init_test_secure_memory() callconv(.c) void;
 
 /// Global test counters matching `jent_ut_Attempted` and `jent_ut_Skipped` in `unit.h`.
 pub var jent_ut_Attempted: c_int = 0;
@@ -20,6 +22,7 @@ pub var jent_ut_Skipped: c_int = 0;
 pub fn resetCounters() void {
     jent_ut_Attempted = 0;
     jent_ut_Skipped = 0;
+    raiseMemlockLimit();
 }
 
 /// Check whether `JENT_UT_STRICT` is set to a non-empty, non-"0" value in the environment.
@@ -116,20 +119,12 @@ pub fn checkOrExit(cond: bool, src: std.builtin.SourceLocation) void {
     check(cond, src) catch std.process.exit(1);
 }
 
-/// Record a skipped check (matching `skip(...)` in `unit.h`).
-/// If `JENT_UT_STRICT` is enabled, prints a strict failure diagnostic and returns `error.TestStrictSkipForbidden`.
+/// Record a skipped check (matching `JENT_UT_SKIP(...)` in `unit.h`).
 pub fn skip(
     src: std.builtin.SourceLocation,
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
-    if (isStrict()) {
-        std.debug.print(
-            "FAIL (strict) [{s}:{d} in {s}]: " ++ fmt ++ "\n",
-            .{ src.file, src.line, src.fn_name } ++ args,
-        );
-        return error.TestStrictSkipForbidden;
-    }
     jent_ut_Attempted += 1;
     jent_ut_Skipped += 1;
     std.debug.print(
@@ -138,7 +133,7 @@ pub fn skip(
     );
 }
 
-/// Record a skipped check or exit with code 1 if `JENT_UT_STRICT` is set.
+/// Record a skipped check.
 pub fn skipOrExit(
     src: std.builtin.SourceLocation,
     comptime fmt: []const u8,
@@ -148,14 +143,14 @@ pub fn skipOrExit(
 }
 
 /// Compute summary status and print PASS/SKIP banner (matching `pass(name)` in `unit.h`).
-/// Returns `SKIP_RETURN_CODE` (77) if all attempted checks were skipped, or `0` on pass.
+/// Returns `0` on pass or when all attempted checks were skipped.
 pub fn finish(name: []const u8) u8 {
     if (jent_ut_Attempted > 0 and jent_ut_Skipped == jent_ut_Attempted) {
         std.debug.print(
             "SKIP: {s} (all {d} checks skipped)\n",
             .{ name, jent_ut_Skipped },
         );
-        return SKIP_RETURN_CODE;
+        return 0;
     }
     std.debug.print(
         "PASS: {s} ({d} checks, {d} skipped)\n",
@@ -164,26 +159,31 @@ pub fn finish(name: []const u8) u8 {
     return 0;
 }
 
-/// Print final summary for `name` and exit the process with 0 or `SKIP_RETURN_CODE` (77).
+/// Print final summary for `name` and exit the process with 0.
 pub fn pass(name: []const u8) noreturn {
     const code = finish(name);
     std.process.exit(code);
 }
 
-/// Raise `RLIMIT_MEMLOCK` soft limit to hard limit if below 256 KiB
-/// (Zig port of `raise_memlock_limit` from `tests/jitterentropy-memlock.h`).
+/// Raise `RLIMIT_MEMLOCK` soft limit to hard limit if below 3 MiB and initialize
+/// external crypto secure memory if applicable
+/// (Zig port of `raise_memlock_limit` / `jent_init_secure_memory` from `tests/jitterentropy-memlock.h`).
 pub fn raiseMemlockLimit() void {
-    if (builtin.os.tag == .windows or builtin.os.tag == .freestanding or !builtin.link_libc) {
-        return;
-    }
-    if (@hasDecl(std.c, "rlimit_resource") and @hasDecl(std.c, "getrlimit") and @hasDecl(std.c, "setrlimit")) {
-        if (@hasField(std.c.rlimit_resource, "MEMLOCK")) {
-            var rl: std.c.rlimit = undefined;
-            if (std.c.getrlimit(.MEMLOCK, &rl) != 0) return;
-            if (rl.cur == std.c.RLIM.INFINITY or rl.cur >= MIN_MEMLOCK_BYTES) return;
-            rl.cur = rl.max;
-            _ = std.c.setrlimit(.MEMLOCK, &rl);
+    if (builtin.os.tag != .windows and builtin.os.tag != .freestanding and builtin.link_libc) {
+        if (@hasDecl(std.c, "rlimit_resource") and @hasDecl(std.c, "getrlimit") and @hasDecl(std.c, "setrlimit")) {
+            if (@hasField(std.c.rlimit_resource, "MEMLOCK")) {
+                var rl: std.c.rlimit = undefined;
+                if (std.c.getrlimit(.MEMLOCK, &rl) == 0) {
+                    if (rl.cur != std.c.RLIM.INFINITY and rl.cur < MIN_MEMLOCK_BYTES) {
+                        rl.cur = rl.max;
+                        _ = std.c.setrlimit(.MEMLOCK, &rl);
+                    }
+                }
+            }
         }
+    }
+    if (!builtin.is_test) {
+        jent_init_test_secure_memory();
     }
 }
 

@@ -1,5 +1,11 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
+
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+
+pub const panic = std.debug.FullPanic(trapPanic);
 pub const build_options = internal.build_options;
 pub const arch_atomic = @import("arch/atomic.zig");
 pub const arch_cache = @import("arch/cache.zig");

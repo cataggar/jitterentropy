@@ -100,8 +100,13 @@ fn outputHex(data: *const [32]u8) bool {
     return c.fwrite(&encoded, encoded.len, 1, options.stdout()) == 1;
 }
 
-pub fn main(init: std.process.Init) u8 {
-    var args = std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa) catch
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
+pub fn main(init: std.process.Init.Minimal) u8 {
+    var args = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch
         return 1;
     defer args.deinit();
     const program = args.next() orelse "jitterentropy-rng";

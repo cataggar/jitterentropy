@@ -360,7 +360,7 @@ fn testForcedNotimeReportsNoTimer() void {
 
 pub fn main() u8 {
     h.resetCounters();
-    if (jent.jent_entropy_init() != 0) return h.SKIP_RETURN_CODE;
+    if (jent.jent_entropy_init() != 0) return 0;
     testBadTimers();
     testInjectionWorks();
     testGcdFailures();

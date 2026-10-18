@@ -95,7 +95,8 @@ fn errnoPtr() *c_int {
 fn sysconfNprocessorsOnln() c_int {
     return switch (builtin.os.tag) {
         .linux => 84,
-        .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .openbsd, .dragonfly => 58,
+        .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .dragonfly => 58,
+        .openbsd => 503,
         .netbsd => 1002,
         .illumos => 15,
         else => 58,

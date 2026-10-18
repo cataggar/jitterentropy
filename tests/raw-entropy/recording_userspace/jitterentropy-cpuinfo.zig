@@ -1712,8 +1712,8 @@ fn describeCurrentGeneric(info: *CpuInfo) void {
 fn getCpusGeneric(list: *CpuList) i32 {
     const sc_nprocessors_onln: c_int = switch (builtin.os.tag) {
         .freebsd, .dragonfly => 58,
-        .openbsd => 502,
-        .netbsd => 83,
+        .openbsd => 503,
+        .netbsd => 1002,
         .illumos => 15,
         .haiku => 35,
         else => 84,
@@ -2339,7 +2339,12 @@ const FdWriter = struct {
 
 var global_cpu_list: CpuList = .{};
 
-pub fn main(init: std.process.Init) u8 {
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
+pub fn main(init: std.process.Init.Minimal) u8 {
     var stdout_buf: [4096]u8 = undefined;
     var stderr_buf: [1024]u8 = undefined;
     var out_fd = FdWriter.init(1, &stdout_buf);
@@ -2351,7 +2356,7 @@ pub fn main(init: std.process.Init) u8 {
         stderr.flush() catch {};
     }
 
-    var args_it = std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa) catch return 1;
+    var args_it = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch return 1;
     defer args_it.deinit();
     const prog_name = args_it.next() orelse "jitterentropy-cpuinfo";
 

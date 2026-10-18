@@ -150,7 +150,7 @@ jobs:
         run: git -C acvpparser log -1 --format='%H %cd %s'
 
       - name: Build the library
-        run: zig build -Dlinkage=static -Dtools=false
+        run: zig build -Dlinkage=static -Dtools=false -Dexport-internals=true
 
       - name: Build acvpparser against this tree
         run: |
@@ -177,12 +177,13 @@ jobs:
           #define HASH_CTX_ON_STACK(name) struct jent_sha_ctx name
           void jent_sha3_256_init(struct jent_sha_ctx *ctx);
           void jent_shake256_init(struct jent_sha_ctx *ctx);
-          void jent_shake256_set_digestsize(struct jent_sha_ctx *ctx, size_t digestsize);
+          static inline void jent_shake256_set_digestsize(struct jent_sha_ctx *ctx, size_t digestsize) {
+              ctx->digestsize = (unsigned int)digestsize;
+          }
           void jent_sha3_update(struct jent_sha_ctx *ctx, const uint8_t *in, size_t inlen);
           void jent_sha3_final(struct jent_sha_ctx *ctx, uint8_t *digest);
           EOF
-          zig_core=$(find .zig-cache -name 'libjitterentropy-zig-core.a' | head -n 1)
-          LDFLAGS="$zig_core" \
+          LDFLAGS="$PWD/zig-out/lib/libjitterentropy.a" \
             make -C acvpparser jent JENT_SRC="$RUNNER_TEMP/jent-src" -j "$(nproc)"
 
       - name: Check its digests against hashlib

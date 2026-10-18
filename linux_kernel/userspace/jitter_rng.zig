@@ -8,6 +8,11 @@
 
 const std = @import("std");
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const JENT_KERNEL_DEVICE: [:0]const u8 = "/dev/jitterentropy";
 const JENT_KERNEL_STATUS_LEN: usize = 4096;
 const JENT_KERNEL_UUID_STRLEN: usize = 37;

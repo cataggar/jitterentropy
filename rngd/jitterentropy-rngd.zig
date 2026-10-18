@@ -38,6 +38,11 @@ const std = @import("std");
 const c = std.c;
 const linux = std.os.linux;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 extern fn strtoul(value: [*c]const u8, end: *[*:0]u8, base: c_int) callconv(.c) c_ulong;
 
 fn enumInt(value: anytype) @typeInfo(@TypeOf(value)).@"enum".tag_type {
