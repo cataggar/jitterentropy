@@ -2,9 +2,11 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 
 const root = @import("root");
 const is_linux_kernel = @hasDecl(root, "is_linux_kernel") and root.is_linux_kernel;
+const enable_test_hooks = (@hasDecl(build_options, "export_internals") and build_options.export_internals) or builtin.is_test;
 
 extern fn jent_kshim_get_random_bytes(buf: [*]u8, len: usize) callconv(.c) void;
 
@@ -27,7 +29,11 @@ pub fn jent_os_random_bytes(buf: [*]u8, len: usize) callconv(.c) c_int {
     }
     if (comptime os == .linux) {
         if (comptime hasLibcGetrandom()) {
-            if (@atomicLoad(c_int, &jent_fi_fail_getrandom, .seq_cst) == 0) {
+            const fail_getrandom = if (comptime enable_test_hooks)
+                @atomicLoad(c_int, &jent_fi_fail_getrandom, .seq_cst) != 0
+            else
+                false;
+            if (!fail_getrandom) {
                 var offset: usize = 0;
                 while (offset < len) {
                     const result = getrandom(buf + offset, len - offset, GRND_NONBLOCK);

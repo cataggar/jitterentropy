@@ -87,7 +87,9 @@ pub fn jent_fi_real_fips_enabled() callconv(.c) c_int {
 }
 
 pub fn jent_fips_enabled() callconv(.c) c_int {
-    if (@atomicLoad(c_int, &jent_fi_force_fips_enabled, .seq_cst) != 0) return 1;
+    if (comptime internal.enable_test_hooks) {
+        if (@atomicLoad(c_int, &jent_fi_force_fips_enabled, .seq_cst) != 0) return 1;
+    }
     return jent_fi_real_fips_enabled();
 }
 

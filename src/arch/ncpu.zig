@@ -190,11 +190,13 @@ fn countAndHighest(bytes: []const u8, count: *c_long, highest: *c_long) void {
 
 fn affinityMask(count: *c_long, highest: *c_long) c_int {
     if (!linux) return @intCast(negErr(.nosys));
-    if (jent_fi_fail_affinity != 0) return @intCast(negErr(.perm));
-    if (jent_fi_empty_affinity != 0) {
-        count.* = 0;
-        highest.* = -1;
-        return 0;
+    if (comptime internal.enable_test_hooks) {
+        if (jent_fi_fail_affinity != 0) return @intCast(negErr(.perm));
+        if (jent_fi_empty_affinity != 0) {
+            count.* = 0;
+            highest.* = -1;
+            return 0;
+        }
     }
 
     var fixed: CpuSet align(@alignOf(usize)) = @splat(0);
@@ -207,7 +209,9 @@ fn affinityMask(count: *c_long, highest: *c_long) c_int {
     var ncpu_set: usize = fixed.len * 8 * 2;
     while (ncpu_set <= internal.JENT_NCPU_SET_MAX) : (ncpu_set *= 2) {
         const size = (ncpu_set + 7) / 8;
-        if (jent_fi_fail_cpu_alloc != 0) return @intCast(negErr(.nomem));
+        if (comptime internal.enable_test_hooks) {
+            if (jent_fi_fail_cpu_alloc != 0) return @intCast(negErr(.nomem));
+        }
         const raw = std.c.malloc(size) orelse return @intCast(negErr(.nomem));
         defer std.c.free(raw);
         const bytes = @as([*]u8, @ptrCast(raw))[0..size];
@@ -280,11 +284,13 @@ fn ncpuSysfsFile(path: [*:0]const u8) c_long {
 }
 
 fn sysconfNcpu() c_long {
-    switch (jent_fi_ncpu_sysconf_mode) {
-        1 => return negErr(.inval),
-        2 => return negErr(.fault),
-        3 => return 1 << 20,
-        else => {},
+    if (comptime internal.enable_test_hooks) {
+        switch (jent_fi_ncpu_sysconf_mode) {
+            1 => return negErr(.inval),
+            2 => return negErr(.fault),
+            3 => return 1 << 20,
+            else => {},
+        }
     }
 
     errnoPtr().* = 0;
@@ -321,7 +327,8 @@ pub fn jent_fi_real_ncpu() callconv(.c) c_long {
         var count: c_long = 0;
         var highest: c_long = -1;
         if (affinityMask(&count, &highest) == 0 and count > 0) return count;
-        if (use_linux_sysfs and jent_fi_ncpu_sysconf_mode == 0) {
+        const sysconf_mode_zero = if (comptime internal.enable_test_hooks) jent_fi_ncpu_sysconf_mode == 0 else true;
+        if (use_linux_sysfs and sysconf_mode_zero) {
             const sysfs = ncpuSysfsFile("/sys/devices/system/cpu/online");
             if (sysfs > 0) return sysfs;
         }
@@ -331,7 +338,9 @@ pub fn jent_fi_real_ncpu() callconv(.c) c_long {
 }
 
 pub fn jent_ncpu() callconv(.c) c_long {
-    if (jent_fi_ncpu != 0) return jent_fi_ncpu;
+    if (comptime internal.enable_test_hooks) {
+        if (jent_fi_ncpu != 0) return jent_fi_ncpu;
+    }
     return jent_fi_real_ncpu();
 }
 

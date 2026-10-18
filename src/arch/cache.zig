@@ -2,6 +2,10 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const root = @import("root");
+const enable_test_hooks = (@hasDecl(root, "build_options") and @hasDecl(root.build_options, "export_internals") and root.build_options.export_internals) or
+    (!@hasDecl(root, "build_options") and !(@hasDecl(root, "is_linux_kernel") and root.is_linux_kernel)) or
+    builtin.is_test;
 
 const is_linux = builtin.os.tag == .linux;
 const is_windows = builtin.os.tag == .windows;
@@ -240,12 +244,15 @@ pub fn jent_parse_shared_cpu_map(buf: [*:0]const u8) callconv(.c) u32 {
 }
 
 fn fiSysconf(name: c_int) c_long {
-    return switch (jent_fi_cache_sysconf_mode) {
-        1 => -1,
-        2 => 0,
-        3 => @as(c_long, 1) << 20,
-        else => if (is_linux) sysconf(name) else -1,
-    };
+    if (comptime enable_test_hooks) {
+        switch (jent_fi_cache_sysconf_mode) {
+            1 => return -1,
+            2 => return 0,
+            3 => return @as(c_long, 1) << 20,
+            else => {},
+        }
+    }
+    return if (is_linux) sysconf(name) else -1;
 }
 
 pub fn jent_get_cachesize_sysconf(l1: *u64, l2: *u64, l3: *u64) callconv(.c) void {
@@ -362,7 +369,8 @@ pub fn jent_get_cachesize_sysfs_dir(
 }
 
 pub fn jent_get_cachesize_sysfs(l1: *u64, l2: *u64, l3: *u64) callconv(.c) void {
-    jent_get_cachesize_sysfs_dir(sysfs_cpu_base, l1, l2, l3);
+    const base = if (comptime enable_test_hooks) sysfs_cpu_base else default_sysfs_cpu_base.ptr;
+    jent_get_cachesize_sysfs_dir(base, l1, l2, l3);
 }
 
 pub const arm_core_caches = [_]ArmCoreCache{
@@ -502,7 +510,8 @@ pub fn jent_get_cachesize_cpuinfo_file(
 }
 
 pub fn jent_get_cachesize_cpuinfo(l1: *u64, l2: *u64, l3: *u64) callconv(.c) void {
-    jent_get_cachesize_cpuinfo_file(proc_cpuinfo_path, l1, l2, l3);
+    const path = if (comptime enable_test_hooks) proc_cpuinfo_path else default_proc_cpuinfo.ptr;
+    jent_get_cachesize_cpuinfo_file(path, l1, l2, l3);
 }
 
 pub fn cacheSizesArm64(
@@ -590,7 +599,10 @@ pub fn jent_cpuid_count(
 }
 
 fn cpuidSource() CpuidFn {
-    return jent_cache_cpuid_callback orelse jent_cpuid_count;
+    if (comptime enable_test_hooks) {
+        return jent_cache_cpuid_callback orelse jent_cpuid_count;
+    }
+    return jent_cpuid_count;
 }
 
 pub fn cacheSizesCpuidLeaf(cpuid: CpuidFn, leaf: u32, l1: *u64, l2: *u64, l3: *u64) bool {

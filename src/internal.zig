@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 pub const build_options = @import("build_options");
+pub const enable_test_hooks: bool = (@hasDecl(build_options, "export_internals") and build_options.export_internals) or builtin.is_test;
 
 // ============================================================================
 // Version Constants (jitterentropy.h)
