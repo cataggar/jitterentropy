@@ -1044,26 +1044,6 @@ pub fn build(b: *std.Build) void {
     const run_zig_harness_tests = b.addRunArtifact(zig_harness_tests);
     test_step.dependOn(&run_zig_harness_tests.step);
 
-    const kmod_test_options = b.addOptions();
-    kmod_test_options.addOption(bool, "kcapi", true);
-    kmod_test_options.addOption(bool, "chardev", true);
-    kmod_test_options.addOption(bool, "hwrng", true);
-    kmod_test_options.addOption(bool, "testinterface", true);
-    kmod_test_options.addOption(bool, "builtin_jitterentropy", false);
-    const kmod_core_mod = createCModule(b, target, optimize, opts, null);
-    kmod_core_mod.root_source_file = b.path("linux_kernel/kmod_core.zig");
-    kmod_core_mod.addOptions("kmod_build_options", kmod_test_options);
-    const kmod_test_mod = createCModule(b, target, optimize, opts, null);
-    kmod_test_mod.root_source_file = b.path("tests/unit/test_kmod_core.zig");
-    kmod_test_mod.addImport("kmod_core", kmod_core_mod);
-    const zig_kmod_tests = b.addTest(.{
-        .name = "zig-kmod-tests",
-        .root_module = kmod_test_mod,
-    });
-    const run_zig_kmod_tests = b.addRunArtifact(zig_kmod_tests);
-    applyTestEnv(run_zig_kmod_tests, tsan_options);
-    test_step.dependOn(&run_zig_kmod_tests.step);
-
     const abi_layout_test_mod = createCModule(b, target, optimize, opts, null);
     abi_layout_test_mod.root_source_file = b.path("tests/unit/test_abi_layout.zig");
     abi_layout_test_mod.addImport("jent", zig_test_mod);
@@ -1113,6 +1093,26 @@ pub fn build(b: *std.Build) void {
     }
 
     if (os_tag == .linux) {
+        const kmod_test_options = b.addOptions();
+        kmod_test_options.addOption(bool, "kcapi", true);
+        kmod_test_options.addOption(bool, "chardev", true);
+        kmod_test_options.addOption(bool, "hwrng", true);
+        kmod_test_options.addOption(bool, "testinterface", true);
+        kmod_test_options.addOption(bool, "builtin_jitterentropy", false);
+        const kmod_core_mod = createCModule(b, target, optimize, opts, null);
+        kmod_core_mod.root_source_file = b.path("linux_kernel/kmod_core.zig");
+        kmod_core_mod.addOptions("kmod_build_options", kmod_test_options);
+        const kmod_test_mod = createCModule(b, target, optimize, opts, null);
+        kmod_test_mod.root_source_file = b.path("tests/unit/test_kmod_core.zig");
+        kmod_test_mod.addImport("kmod_core", kmod_core_mod);
+        const zig_kmod_tests = b.addTest(.{
+            .name = "zig-kmod-tests",
+            .root_module = kmod_test_mod,
+        });
+        const run_zig_kmod_tests = b.addRunArtifact(zig_kmod_tests);
+        applyTestEnv(run_zig_kmod_tests, tsan_options);
+        test_step.dependOn(&run_zig_kmod_tests.step);
+
         const ut_kern_lib_mod = createCModule(b, target, optimize, opts, null);
         ut_kern_lib_mod.root_source_file = b.path("linux_kernel/userspace/jitterentropy-kernel.zig");
         const ut_kern_mod = createCModule(b, target, optimize, opts, null);
