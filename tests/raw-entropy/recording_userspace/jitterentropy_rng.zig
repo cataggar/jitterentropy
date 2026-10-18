@@ -2,6 +2,14 @@ const std = @import("std");
 const builtin = @import("builtin");
 const options = @import("options.zig");
 
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+pub const std_options: std.Options = .{
+    .enable_segfault_handler = false,
+    .signal_stack_size = null,
+    .unexpected_error_tracing = false,
+    .allow_stack_tracing = false,
+};
+
 const Collector = opaque {};
 
 const c = struct {

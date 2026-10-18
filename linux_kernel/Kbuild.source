@@ -150,7 +150,7 @@ quiet_cmd_jent_zig = ZIG     $@
 		     ZIG_GLOBAL_CACHE_DIR="$(jent_zig_global_cache)"	       \
 		     ZIG_LOCAL_CACHE_DIR="$(jent_zig_local_cache)"	       \
 		     TMPDIR="$(jent_zig_tmp)"				       \
-		     zig build-obj -fllvm -fno-stack-check		       \
+		     zig build-obj -fllvm -fno-stack-check -mno-red-zone       \
 		       -target $(jent_zig_target)			       \
 		       -mcpu '$(jent_zig_cpu)' $(jent_zig_model) -O Debug       \
 		       -fno-PIC -fno-PIE -fno-stack-protector		       \
@@ -159,6 +159,8 @@ quiet_cmd_jent_zig = ZIG     $@
 		       --dep build_options --dep kmod_core		       \
 		       -Mroot="$(jent_srcdir)/../src/kernel_root.zig"	       \
 		       -Mbuild_options="$(jent_srcdir)/kernel_build_options.zig" \
+		       -mno-red-zone -fno-stack-check -fno-PIC -fno-PIE	       \
+		       -fno-stack-protector -fno-omit-frame-pointer	       \
 		       --dep kmod_build_options				       \
 		       -Mkmod_core="$(jent_srcdir)/kmod_core.zig"	       \
 		       -Mkmod_build_options="$(jent_zig_local_cache)/kernel_build_options.zig"

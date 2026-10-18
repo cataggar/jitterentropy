@@ -26,6 +26,13 @@ fn trapPanic(_: []const u8, _: ?usize) noreturn {
     @trap();
 }
 pub const panic = std.debug.FullPanic(trapPanic);
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+pub const std_options: std.Options = .{
+    .enable_segfault_handler = false,
+    .signal_stack_size = null,
+    .unexpected_error_tracing = false,
+    .allow_stack_tracing = false,
+};
 
 pub fn main(init_context: std.process.Init.Minimal) u8 {
     var args = std.process.Args.Iterator.initAllocator(init_context.args, std.heap.c_allocator) catch return 1;

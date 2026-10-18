@@ -1,4 +1,10 @@
 const __root = @This();
+const std = @import("std");
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
 pub const __builtin = @import("std").zig.c_translation.builtins;
 pub const __helpers = @import("std").zig.c_translation.helpers;
 pub fn __assert_fail(__assertion: [*c]const u8, __file: [*c]const u8, __line: c_uint, __function: [*c]const u8) noreturn {

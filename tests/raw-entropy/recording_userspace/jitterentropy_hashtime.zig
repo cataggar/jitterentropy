@@ -3,6 +3,14 @@ const builtin = @import("builtin");
 const tool_options = @import("tool_options");
 const options = @import("options.zig");
 
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+pub const std_options: std.Options = .{
+    .enable_segfault_handler = false,
+    .signal_stack_size = null,
+    .unexpected_error_tracing = false,
+    .allow_stack_tracing = false,
+};
+
 const c = struct {
     extern fn fprintf(stream: *anyopaque, format: [*:0]const u8, ...) callconv(.c) c_int;
     extern fn fputs(text: [*:0]const u8, stream: *anyopaque) callconv(.c) c_int;

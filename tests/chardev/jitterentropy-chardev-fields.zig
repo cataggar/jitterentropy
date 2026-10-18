@@ -18,6 +18,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const JENT_STATUS_MAX_LEN: u32 = 4096;
 const JENT_UUID_IOCTL_LEN: usize = 37;
 const JENT_IOC_MAGIC: u8 = 'J';

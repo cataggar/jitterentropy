@@ -2,6 +2,12 @@ const std = @import("std");
 const health = @import("jent").health;
 const internal = health.internal;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+
 const max_stamps = 4096;
 const guard_size = 32;
 const fill = 0xa5;

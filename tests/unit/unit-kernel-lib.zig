@@ -14,6 +14,11 @@ const std = @import("std");
 const linux = std.os.linux;
 const kern = @import("jitterentropy_kernel");
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const EBADF: c_int = 9;
 const EINVAL: c_int = 22;
 const ENAMETOOLONG: c_int = 36;
