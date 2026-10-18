@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0 OR BSD-2-Clause
 
 const std = @import("std");
-const build_options = @import("kmod_build_options");
+const builtin = @import("builtin");
+const build_options = if (builtin.is_test) struct {
+    pub const kcapi = true;
+    pub const chardev = true;
+    pub const hwrng = true;
+    pub const testinterface = true;
+    pub const builtin_jitterentropy = false;
+} else @import("kmod_build_options");
 
 const RandData = opaque {};
 const Mutex = opaque {};
@@ -349,6 +356,7 @@ pub export fn jent_status_to_user(
 ) callconv(.c) c_long {
     var status: StatusIoctl = undefined;
     if (jent_kshim_copy_from_user(&status, arg, @sizeOf(StatusIoctl)) != 0) return -EFAULT;
+    if ((status.buf == 0) != (status.length == 0)) return -EINVAL;
     const raw = jent_kshim_kvzalloc(JENT_STATUS_MAX_LEN) orelse return -ENOMEM;
     const buf: [*]u8 = @ptrCast(raw);
     defer jent_kshim_kvfree_sensitive(raw, JENT_STATUS_MAX_LEN);
@@ -644,9 +652,9 @@ pub export fn jent_zig_chardev_read(file: *File, user_buf: *anyopaque, requested
     if (!build_options.chardev) return -ENOTTY;
     const ctx = jent_kshim_chardev_file_ctx(file) orelse return -EFAULT;
     if (requested == 0) return 0;
-    var tmp: [32]u8 = undefined;
+    var tmp: [256]u8 = undefined;
     defer jent_kshim_memzero(&tmp, tmp.len);
-    var remaining = if (jent_kshim_file_nonblock(file)) @min(requested, tmp.len) else requested;
+    var remaining = if (jent_kshim_file_nonblock(file)) @min(requested, 32) else requested;
     var done: isize = 0;
     var dst: [*]u8 = @ptrCast(user_buf);
     while (remaining != 0) {
@@ -867,7 +875,7 @@ pub export fn jent_zig_testing_read(file: *File, user_buf: *anyopaque, requested
     const samples_buf: [*]u64 = @ptrCast(@alignCast(raw));
     const lock = jent_kshim_testing_lock();
     if (jent_kshim_mutex_lock_interruptible(lock) != 0) return -ERESTARTSYS;
-    const loop_count: u32 = @intCast(jent_kshim_testing_loop_count(ctx).*);
+    const loop_count: u32 = @intCast(@min(jent_kshim_testing_loop_count(ctx).*, 1 << 16));
     jent_kshim_mutex_unlock(lock);
     var remaining = requested;
     var done: isize = 0;
