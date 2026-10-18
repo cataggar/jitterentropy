@@ -1,5 +1,6 @@
 const std = @import("std");
 const internal = @import("internal.zig");
+const memory = @import("arch/memory.zig");
 
 // build.zig compiles every root module containing this file in Debug mode.
 // Zig 0.16/0.17 do not provide a per-function @setOptimizeMode builtin.
@@ -269,6 +270,7 @@ fn shake256Tester() c_int {
     };
     var actual: [expected.len]u8 = @splat(0);
     var ctx: ShaCtx = .{};
+    defer memory.jent_memset_secure(&ctx, @sizeOf(ShaCtx));
     jent_shake256_init(&ctx);
     jent_sha3_update(&ctx, &message, message.len);
     internal.jent_shake256_set_digestsize(&ctx, expected.len);
@@ -286,6 +288,7 @@ fn xdrbg256Tester() c_int {
     };
     var actual: [expected.len]u8 = @splat(0);
     var ctx: ShaCtx = .{};
+    defer memory.jent_memset_secure(&ctx, @sizeOf(ShaCtx));
     jent_shake256_init(&ctx);
     jent_sha3_update(&ctx, &seed, seed.len);
     xdrbgGenerateBlock(&ctx, &actual, actual.len);
@@ -306,6 +309,7 @@ fn sha3MultiblockTester() c_int {
     for (&message, 0..) |*byte, i| byte.* = @truncate(i);
     var actual: [expected.len]u8 = @splat(0);
     var ctx: ShaCtx = .{};
+    defer memory.jent_memset_secure(&ctx, @sizeOf(ShaCtx));
     jent_sha3_256_init(&ctx);
     for (chunks) |chunk| jent_sha3_update(&ctx, &message, chunk);
     jent_sha3_final(&ctx, &actual);

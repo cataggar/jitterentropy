@@ -1,4 +1,5 @@
 const internal = @import("internal.zig");
+const memory = @import("arch/memory.zig");
 
 var uuid_counter: u32 = 0;
 const hex = "0123456789abcdef";
@@ -40,6 +41,7 @@ pub fn jent_uuid_from_counter(bytes: [*]u8) callconv(.c) void {
 
 pub fn jent_uuid_generate(output: [*]u8) callconv(.c) void {
     var bytes: [16]u8 = undefined;
+    defer memory.jent_memset_secure(&bytes, bytes.len);
     if (internal.jent_os_random_bytes(&bytes, bytes.len) != 0) {
         jent_uuid_from_counter(&bytes);
     } else {

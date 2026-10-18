@@ -11,6 +11,7 @@ extern fn jent_zalloc_unlocked(len: usize) callconv(.c) ?*anyopaque;
 extern fn jent_zfree(ptr: ?*anyopaque, len: usize) callconv(.c) void;
 extern fn jent_memset_secure(ptr: ?*anyopaque, len: usize) callconv(.c) void;
 extern fn jent_memory_is_secure(flags: c_uint) callconv(.c) c_int;
+extern fn jent_secure_memory_supported() callconv(.c) c_int;
 
 extern fn fork() c_int;
 extern fn waitpid(pid: c_int, status: *c_int, options: c_int) c_int;
@@ -111,10 +112,37 @@ fn testMemory() void {
     var byte: u8 = 0x5a;
     jent_memset_secure(&byte, 0);
     check(byte == 0x5a, "a zero-length wipe writes nothing");
+
+    check(
+        jent_secure_memory_supported() == 1,
+        "secure memory support is reported on supported host platforms",
+    );
     check(
         jent_memory_is_secure(internal.JENT_FORCE_SECURE_MEM) == 1,
         "the memory is secure memory",
     );
+    const unforced_secure = jent_memory_is_secure(0);
+    check(
+        unforced_secure == 0 or unforced_secure == 1,
+        "jent_memory_is_secure(0) returns a boolean flag",
+    );
+
+    const page_size = jent_pagesize();
+    for ([_]usize{ 1, 64, page_size + 7 }) |unaligned_len| {
+        const ptr_raw = jent_zalloc(unaligned_len, 0) orelse {
+            fail("unaligned allocation ({d} bytes) failed", .{unaligned_len});
+            continue;
+        };
+        defer jent_zfree(ptr_raw, unaligned_len);
+        const bytes = @as([*]u8, @ptrCast(ptr_raw))[0..unaligned_len];
+        var any_nonzero = false;
+        for (bytes) |b| {
+            if (b != 0) any_nonzero = true;
+        }
+        check(!any_nonzero, "page-rounded allocation is zero-initialized");
+        @memset(bytes, 0x3c);
+        check(bytes[0] == 0x3c and bytes[unaligned_len - 1] == 0x3c, "page-rounded allocation is writable across its length");
+    }
 }
 
 fn testGuardPages() void {

@@ -122,6 +122,7 @@ const PROT_WRITE: c_int = 2;
 const MAP_PRIVATE: c_int = 2;
 const MAP_ANONYMOUS: c_int = if (builtin.os.tag == .linux) 0x20 else 0x1000;
 const MADV_DONTDUMP: c_int = 16;
+const MADV_WIPEONFORK: c_int = 18;
 const MADV_NOCORE: c_int = 17;
 const EAGAIN: c_int = if (builtin.os.tag == .linux) 11 else 35;
 const EPERM: c_int = 1;
@@ -159,13 +160,28 @@ pub fn jent_memset_secure(ptr: ?*anyopaque, len: usize) callconv(.c) void {
     jent_secure_memzero(ptr, len);
 }
 
+var mlock_active: u8 = 1;
+
 pub fn jent_secure_memory_supported() callconv(.c) c_int {
-    return 1;
+    return if (is_linux_kernel or external_crypto != .none or use_windows or use_posix) 1 else 0;
 }
 
 pub fn jent_memory_is_secure(flags: c_uint) callconv(.c) c_int {
-    _ = flags;
-    return 1;
+    if ((flags & internal.JENT_FORCE_SECURE_MEM) != 0) {
+        return if (jent_secure_memory_supported() != 0 or builtin.os.tag == .uefi) 1 else 0;
+    }
+    if (use_posix or use_windows) {
+        return if (@atomicLoad(u8, &mlock_active, .monotonic) != 0) 1 else 0;
+    }
+    if (use_openssl) {
+        return if (CRYPTO_secure_malloc_initialized() != 0) 1 else 0;
+    }
+    if (use_libgcrypt) {
+        const GCRYCTL_INITIALIZATION_FINISHED_P: c_uint = 39;
+        return if (gcry_control(GCRYCTL_INITIALIZATION_FINISHED_P, @as(c_int, 0)) != 0) 1 else 0;
+    }
+    if (builtin.os.tag == .uefi) return 1;
+    return jent_secure_memory_supported();
 }
 
 pub fn jent_memory_backend_name() callconv(.c) [*:0]const u8 {
@@ -284,6 +300,9 @@ fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
         }
     } else if (use_awslc) {
         result = OPENSSL_malloc(len);
+        if (result) |ptr| {
+            @memset(@as([*]u8, @ptrCast(ptr))[0..len], 0);
+        }
     } else if (use_openssl) {
         if (secure and CRYPTO_secure_malloc_initialized() != 0) {
             _ = ERR_set_mark();
@@ -324,6 +343,7 @@ fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
         }
         if (secure) {
             const locked = if (jent_fi_fail_mlock != 0) 0 else VirtualLock(payload_ptr, layout.payload);
+            @atomicStore(u8, &mlock_active, @intFromBool(locked != 0), .monotonic);
             if (locked == 0 and (flags & internal.JENT_FORCE_SECURE_MEM) != 0) {
                 _ = VirtualFree(base, 0, MEM_RELEASE);
                 return null;
@@ -353,13 +373,15 @@ fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
 
         const payload_ptr = ptrAdd(mapped, page_size);
         if (builtin.os.tag == .linux) {
-            _ = madvise(payload_ptr, len, MADV_DONTDUMP);
+            _ = madvise(payload_ptr, layout.payload, MADV_DONTDUMP);
+            _ = madvise(payload_ptr, layout.payload, MADV_WIPEONFORK);
         } else if (builtin.os.tag == .freebsd) {
-            _ = madvise(payload_ptr, len, MADV_NOCORE);
+            _ = madvise(payload_ptr, layout.payload, MADV_NOCORE);
         }
 
         if (secure) {
-            const locked = injectedMlock(payload_ptr, len);
+            const locked = injectedMlock(payload_ptr, layout.payload);
+            @atomicStore(u8, &mlock_active, @intFromBool(locked.ok), .monotonic);
             if (!locked.ok and
                 ((flags & internal.JENT_FORCE_SECURE_MEM) != 0 or
                     !lockFailureIsTolerable(locked.err)))
@@ -431,11 +453,60 @@ pub fn jent_zfree(optional_ptr: ?*anyopaque, len: usize) callconv(.c) void {
     } else if (use_posix) {
         const layout = roundedLayout(len) orelse return;
         const base = ptrSub(ptr, jent_pagesize());
-        _ = munlock(ptr, len);
+        _ = munlock(ptr, layout.payload);
         inspectBeforeRelease(ptr, len);
         _ = munmap(base, layout.total);
     } else {
         inspectBeforeRelease(ptr, len);
         free(ptr);
+    }
+}
+
+test "secure memory support and page-aligned mlock/madvise layout" {
+    const expected_supported: c_int = if (is_linux_kernel or external_crypto != .none or use_windows or use_posix) 1 else 0;
+    try std.testing.expectEqual(expected_supported, jent_secure_memory_supported());
+    if (expected_supported != 0) {
+        try std.testing.expectEqual(@as(c_int, 1), jent_memory_is_secure(internal.JENT_FORCE_SECURE_MEM));
+    }
+
+    const page_size = jent_pagesize();
+    try std.testing.expect(page_size >= 4096);
+    try std.testing.expectEqual(@as(usize, 0), page_size & (page_size - 1));
+
+    const layout_small = roundedLayout(1).?;
+    try std.testing.expectEqual(page_size, layout_small.payload);
+    try std.testing.expectEqual(3 * page_size, layout_small.total);
+
+    const layout_unaligned = roundedLayout(page_size + 7).?;
+    try std.testing.expectEqual(2 * page_size, layout_unaligned.payload);
+    try std.testing.expectEqual(4 * page_size, layout_unaligned.total);
+
+    if (use_posix or use_windows) {
+        for ([_]usize{ 1, 64, page_size + 1 }) |alloc_len| {
+            const ptr = jent_zalloc(alloc_len, 0) orelse return error.OutOfMemory;
+            defer jent_zfree(ptr, alloc_len);
+            try std.testing.expectEqual(@as(usize, 0), @intFromPtr(ptr) % page_size);
+            const slice = @as([*]u8, @ptrCast(ptr))[0..alloc_len];
+            for (slice) |byte| try std.testing.expectEqual(@as(u8, 0), byte);
+            @memset(slice, 0xa5);
+        }
+
+        const saved_fail_mlock = jent_fi_fail_mlock;
+        const saved_mlock_errno = jent_fi_mlock_errno;
+        const saved_mlock_active = @atomicLoad(u8, &mlock_active, .monotonic);
+        defer {
+            jent_fi_fail_mlock = saved_fail_mlock;
+            jent_fi_mlock_errno = saved_mlock_errno;
+            @atomicStore(u8, &mlock_active, saved_mlock_active, .monotonic);
+        }
+
+        jent_fi_fail_mlock = 1;
+        jent_fi_mlock_errno = EPERM;
+        try std.testing.expect(jent_zalloc(64, internal.JENT_FORCE_SECURE_MEM) == null);
+        if (jent_zalloc(64, 0)) |unforced_ptr| {
+            defer jent_zfree(unforced_ptr, 64);
+            try std.testing.expectEqual(@as(c_int, 0), jent_memory_is_secure(0));
+            try std.testing.expectEqual(@as(c_int, 1), jent_memory_is_secure(internal.JENT_FORCE_SECURE_MEM));
+        }
     }
 }
