@@ -65,7 +65,7 @@ fn testAnalyze() void {
     @memset(deltas[0..elements], 12345);
     expect(jent.jent_gcd_analyze(deltas, elements, jent.JENT_MIN_OSR, jent.JENT_GCD_CLOCK_PLATFORM) == jent.EMINVARVAR, "constant history rejected");
 
-    for (0..elements) |i| deltas[i] = (i + 1) * (std.math.maxInt(u32) / 2);
+    for (0..elements) |i| deltas[i] = @as(u64, @intCast(i + 1)) * (std.math.maxInt(u32) / 2);
     expect(jent.jent_gcd_analyze(deltas, elements, jent.JENT_MIN_OSR, jent.JENT_GCD_CLOCK_PLATFORM) == jent.ECOARSETIME, "coarse timer rejected");
     expect(jent.jent_gcd_analyze(null, elements, jent.JENT_MIN_OSR, jent.JENT_GCD_CLOCK_PLATFORM) == jent.ENOMONOTONIC, "null history rejected");
     expect(jent.jent_gcd_analyze(deltas, 0, jent.JENT_MIN_OSR, jent.JENT_GCD_CLOCK_PLATFORM) == jent.ENOMONOTONIC, "empty history rejected");

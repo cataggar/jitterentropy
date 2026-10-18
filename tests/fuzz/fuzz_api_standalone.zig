@@ -20,6 +20,18 @@ fn runFile(path: [:0]const u8) c_int {
     return 0;
 }
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+pub const std_options: std.Options = .{
+    .enable_segfault_handler = false,
+    .signal_stack_size = null,
+    .unexpected_error_tracing = false,
+    .allow_stack_tracing = false,
+};
+
 pub fn main(init: std.process.Init.Minimal) u8 {
     var args = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch return 1;
     defer args.deinit();
@@ -34,7 +46,7 @@ pub fn main(init: std.process.Init.Minimal) u8 {
 
     var input: [24]u8 = undefined;
     for (0..32) |i| {
-        var x: u64 = 0x9e3779b97f4a7c15 *% (i + 1);
+        var x: u64 = @as(u64, 0x9e3779b97f4a7c15) *% @as(u64, i + 1);
         for (&input) |*byte| {
             x ^= x >> 30;
             x *%= 0xbf58476d1ce4e5b9;

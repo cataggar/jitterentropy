@@ -20,7 +20,9 @@ NONIID_MEMLOOP_DATA="jent-raw-noise_memaccloop"
 NONIID_MEMLOOP_RESTART_DATA="jent-raw-noise-memaccloop-restart"
 IID_DATA="jent-conditioned.data"
 
-JENT_GETRAWENTROPY=${JENT_GETRAWENTROPY:-"./getrawentropy"}
+ROOTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+BINDIR=${BINDIR:-"$ROOTDIR/zig-out/bin"}
+JENT_GETRAWENTROPY=${JENT_GETRAWENTROPY:-"$BINDIR/getrawentropy"}
 
 # Define the maximum memory size
 # 0 -> use default
@@ -34,12 +36,15 @@ DEBUGFS_DIR="/sys/kernel/debug/jitter_rng/jent_raw_hires"
 
 build()
 {
-	gcc -Wall -pedantic -Wextra -I../../../ -I../../../linux_kernel/ -DRAW_DATATYPE_U64 -o $JENT_GETRAWENTROPY getrawentropy.c
+	if [ ! -x "$JENT_GETRAWENTROPY" ]
+	then
+		(cd "$ROOTDIR" && ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-/tmp/zig-cache}" zig build -Dtools=true)
+	fi
 }
 
 cleanup()
 {
-	rm -f $JENT_GETRAWENTROPY
+	:
 }
 
 initialization()
@@ -59,8 +64,6 @@ initialization()
 			exit 1
 		fi
 	fi
-
-	trap "rm -f $JENT_GETRAWENTROPY; exit" 0 1 2 3 15
 }
 
 raw_entropy_restart()

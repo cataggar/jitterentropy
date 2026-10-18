@@ -164,7 +164,11 @@ jobs:
 
       - name: Build and install
         run: |
-          sudo env "PATH=$PATH" dkms build -m jitterentropy -v "$VERSION" -k "$KVER"
+          sudo ln -sfn "$(command -v zig)" /usr/bin/zig
+          sudo env "PATH=$PATH" dkms build -m jitterentropy -v "$VERSION" -k "$KVER" || {
+            cat "/var/lib/dkms/jitterentropy/$VERSION/build/make.log" || true
+            exit 1
+          }
           sudo env "PATH=$PATH" dkms install -m jitterentropy -v "$VERSION" -k "$KVER"
           dkms status
 

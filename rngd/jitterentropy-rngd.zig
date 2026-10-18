@@ -38,6 +38,18 @@ const std = @import("std");
 const c = std.c;
 const linux = std.os.linux;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+pub const std_options: std.Options = .{
+    .enable_segfault_handler = false,
+    .signal_stack_size = null,
+    .unexpected_error_tracing = false,
+    .allow_stack_tracing = false,
+};
+
 extern fn strtoul(value: [*c]const u8, end: *[*:0]u8, base: c_int) callconv(.c) c_ulong;
 
 fn enumInt(value: anytype) @typeInfo(@TypeOf(value)).@"enum".tag_type {
@@ -604,7 +616,7 @@ fn gather_entropy_retry(force_reseed: bool) void {
 fn read_entropy_value(fd: c_int) c_uint {
     var buf: [24]u8 = undefined;
 
-    if (c.lseek64(fd, 0, c.SEEK.SET) < 0) {
+    if (c.lseek(fd, 0, c.SEEK.SET) < 0) {
         const err = currentErrno();
         dolog(JENT_LOG_WARN, "Error seeking to start of file: {s}", .{strerrorSlice(err)});
         return 0;
@@ -1011,7 +1023,7 @@ fn open_Flags(acc: std.posix.ACCMODE, creat: bool, nofollow: bool, cloexec: bool
 fn alloc() void {
     alloc_rng();
 
-    ctx.rfd = c.open64(RANDOMDEV, open_Flags(.WRONLY, false, false, true), @as(c.mode_t, 0));
+    ctx.rfd = c.open(RANDOMDEV, open_Flags(.WRONLY, false, false, true), @as(c.mode_t, 0));
     if (ctx.rfd < 0) {
         const err = currentErrno();
         dolog(JENT_LOG_ERR, "Cannot open file {s}: {s}", .{ std.mem.span(RANDOMDEV), strerrorSlice(err) });
@@ -1020,13 +1032,13 @@ fn alloc() void {
     if (ctx.oneshot)
         return;
 
-    ctx.cfd = c.open64(ENTROPYAVAIL, open_Flags(.RDONLY, false, false, true), @as(c.mode_t, 0));
+    ctx.cfd = c.open(ENTROPYAVAIL, open_Flags(.RDONLY, false, false, true), @as(c.mode_t, 0));
     if (ctx.cfd < 0) {
         const err = currentErrno();
         dolog(JENT_LOG_ERR, "Cannot open file {s}: {s}", .{ std.mem.span(ENTROPYAVAIL), strerrorSlice(err) });
     }
 
-    ctx.ufd = c.open64(URANDOMDEV, open_Flags(.WRONLY, false, false, true), @as(c.mode_t, 0));
+    ctx.ufd = c.open(URANDOMDEV, open_Flags(.WRONLY, false, false, true), @as(c.mode_t, 0));
     if (ctx.ufd < 0) {
         const err = currentErrno();
         dolog(JENT_LOG_ERR, "Cannot open file {s}: {s}", .{ std.mem.span(URANDOMDEV), strerrorSlice(err) });
@@ -1088,7 +1100,7 @@ fn create_pid_file(pid_file: ?[*:0]const u8) void {
 
     // Ensure only one instance is running by acquiring an exclusive lock
     // on the PID file. Do not follow symlinks.
-    ctx.pidfile_fd = c.open64(pf, open_Flags(.RDWR, true, true, true), @as(c.mode_t, 0o644));
+    ctx.pidfile_fd = c.open(pf, open_Flags(.RDWR, true, true, true), @as(c.mode_t, 0o644));
     if (ctx.pidfile_fd < 0) {
         const err = currentErrno();
         dolog(JENT_LOG_ERR, "Cannot open PID file {s}: {s}", .{ std.mem.span(pf), strerrorSlice(err) });
@@ -1103,7 +1115,7 @@ fn create_pid_file(pid_file: ?[*:0]const u8) void {
         }
     }
 
-    if (c.ftruncate64(ctx.pidfile_fd, 0) < 0) {
+    if (c.ftruncate(ctx.pidfile_fd, 0) < 0) {
         const err = currentErrno();
         dolog(JENT_LOG_ERR, "Cannot truncate PID file {s}: {s}", .{ std.mem.span(pf), strerrorSlice(err) });
     }

@@ -1,4 +1,10 @@
+const std = @import("std");
 const jent = @import("jent");
+
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
 
 const elements: usize = 1000;
 const expected_gcd: u64 = 50;

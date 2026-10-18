@@ -18,10 +18,7 @@ const ThreadAffinityPolicy = extern struct {
     affinity_tag: c_int,
 };
 
-extern "c" fn __errno_location() *c_int;
 extern "c" fn __error() *c_int;
-extern "c" fn ___errno() *c_int;
-extern "c" fn _errno() *c_int;
 extern "c" fn sched_setaffinity(pid: c_int, size: usize, set: *const anyopaque) c_int;
 extern "c" fn pthread_attr_init(attr: *std.c.pthread_attr_t) c_int;
 extern "c" fn pthread_attr_destroy(attr: *std.c.pthread_attr_t) c_int;
@@ -36,14 +33,14 @@ extern "c" fn pthread_self() std.c.pthread_t;
 extern "c" fn pthread_mach_thread_np(thread: std.c.pthread_t) c_uint;
 extern "c" fn thread_policy_set(thread: c_uint, flavor: c_int, info: *const c_int, count: c_uint) c_int;
 extern "c" fn cpuset_setaffinity(level: c_int, which: c_int, id: isize, size: usize, set: *const anyopaque) c_int;
-extern "c" fn cpuset_create() ?*anyopaque;
-extern "c" fn cpuset_destroy(set: *anyopaque) void;
-extern "c" fn cpuset_zero(set: *anyopaque) void;
-extern "c" fn cpuset_set(cpu: c_uint, set: *anyopaque) c_int;
-extern "c" fn cpuset_size(set: *const anyopaque) usize;
+extern "c" fn _cpuset_create() ?*anyopaque;
+extern "c" fn _cpuset_destroy(set: *anyopaque) void;
+extern "c" fn _cpuset_zero(set: *anyopaque) void;
+extern "c" fn _cpuset_set(cpu: c_uint, set: *anyopaque) c_int;
+extern "c" fn _cpuset_size(set: *const anyopaque) usize;
 extern "c" fn pthread_setaffinity_np(thread: std.c.pthread_t, size: usize, set: *const anyopaque) c_int;
 
-extern "c" fn jent_cpu_to_group(cpu: c_ulong, group: *c_ushort, bit: *c_uint) c_int;
+const jent_cpu_to_group = @import("ncpu.zig").jent_cpu_to_group;
 extern "kernel32" fn GetCurrentThread() callconv(.winapi) Handle;
 extern "kernel32" fn GetThreadGroupAffinity(thread: Handle, affinity: *GroupAffinity) callconv(.winapi) c_int;
 extern "kernel32" fn SetThreadGroupAffinity(thread: Handle, affinity: *const GroupAffinity, previous: ?*GroupAffinity) callconv(.winapi) c_int;
@@ -62,13 +59,13 @@ const Err = enum { again, nomem, fault, inval, nosys, notsup };
 
 fn errnoValue(err: Err) c_int {
     return switch (builtin.os.tag) {
-        .macos, .ios, .tvos, .watchos, .visionos => switch (err) {
+        .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .netbsd, .openbsd, .dragonfly => switch (err) {
             .again => 35,
             .nomem => 12,
             .fault => 14,
             .inval => 22,
             .nosys => 78,
-            .notsup => 45,
+            .notsup => if (builtin.os.tag == .netbsd) 86 else 45,
         },
         else => switch (err) {
             .again => 11,
@@ -86,15 +83,8 @@ fn negErr(err: Err) c_int {
 }
 
 fn errnoPtr() *c_int {
-    if (builtin.os.tag == .linux) return __errno_location();
-    if (builtin.os.tag.isDarwin() or builtin.os.tag == .freebsd or
-        builtin.os.tag == .netbsd or builtin.os.tag == .openbsd or
-        builtin.os.tag == .dragonfly)
-    {
-        return __error();
-    }
-    if (builtin.os.tag == .illumos) return ___errno();
-    return _errno();
+    if (builtin.os.tag == .dragonfly) return __error();
+    return std.c._errno();
 }
 
 fn setBit(bytes: []u8, cpu: usize) void {
@@ -169,11 +159,11 @@ pub fn jent_thread_pin_to_cpu(cpu: c_ulong) callconv(.c) c_int {
     }
 
     if (builtin.os.tag == .netbsd) {
-        const set = cpuset_create() orelse return negErr(.nomem);
-        defer cpuset_destroy(set);
-        cpuset_zero(set);
-        if (cpuset_set(@intCast(cpu), set) != 0) return negErr(.inval);
-        const ret = pthread_setaffinity_np(pthread_self(), cpuset_size(set), set);
+        const set = _cpuset_create() orelse return negErr(.nomem);
+        defer _cpuset_destroy(set);
+        _cpuset_zero(set);
+        if (_cpuset_set(@intCast(cpu), set) != 0) return negErr(.inval);
+        const ret = pthread_setaffinity_np(pthread_self(), _cpuset_size(set), set);
         return if (ret == 0) 0 else -ret;
     }
 

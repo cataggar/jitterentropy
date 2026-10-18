@@ -1,10 +1,19 @@
 const __root = @This();
+const std = @import("std");
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
 pub const __builtin = @import("std").zig.c_translation.builtins;
 pub const __helpers = @import("std").zig.c_translation.helpers;
-pub extern fn __assert_fail(__assertion: [*c]const u8, __file: [*c]const u8, __line: c_uint, __function: [*c]const u8) noreturn;
-pub extern fn __assert_perror_fail(__errnum: c_int, __file: [*c]const u8, __line: c_uint, __function: [*c]const u8) noreturn;
-pub extern fn __assert(__assertion: [*c]const u8, __file: [*c]const u8, __line: c_int) noreturn;
-pub extern fn __errno_location() [*c]c_int;
+pub fn __assert_fail(__assertion: [*c]const u8, __file: [*c]const u8, __line: c_uint, __function: [*c]const u8) noreturn {
+    _ = __assertion;
+    _ = __file;
+    _ = __line;
+    _ = __function;
+    abort();
+}
 pub const ptrdiff_t = c_long;
 pub const wchar_t = c_uint;
 pub const max_align_t = extern struct {
@@ -184,9 +193,6 @@ pub const struct__IO_cookie_io_functions_t = extern struct {
 pub const cookie_io_functions_t = struct__IO_cookie_io_functions_t;
 pub const off_t = __off_t;
 pub const fpos_t = __fpos_t;
-pub extern var stdin: ?*FILE;
-pub extern var stdout: ?*FILE;
-pub extern var stderr: ?*FILE;
 pub extern fn remove(__filename: [*c]const u8) c_int;
 pub extern fn rename(__old: [*c]const u8, __new: [*c]const u8) c_int;
 pub extern fn renameat(__oldfd: c_int, __old: [*c]const u8, __newfd: c_int, __new: [*c]const u8) c_int;
@@ -1410,13 +1416,13 @@ pub fn fz_len(arg_s: [*c]struct_fz_state) callconv(.c) usize {
                 return 65;
             },
             @as(c_int, 5) => {
-                return @bitCast(@as(c_long, FZ_MAXLEN - @as(c_int, 1)));
+                return @intCast(FZ_MAXLEN - @as(c_int, 1));
             },
             @as(c_int, 6) => {
                 return FZ_MAXLEN;
             },
             else => {
-                return @as(usize, pick) % @as(usize, @bitCast(@as(c_long, FZ_MAXLEN + @as(c_int, 1))));
+                return @as(usize, pick) % @as(usize, @intCast(FZ_MAXLEN + @as(c_int, 1)));
             },
         }
     }
@@ -1450,9 +1456,9 @@ pub fn fz_check_buf(arg_len: usize) callconv(.c) void {
                     __assert_fail("fz_area[i] == FZ_FILL", "tests/fuzz/fuzz-api.c", 283, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
                 }
             }
-            _ = @sizeOf(@TypeOf(if (@as(c_int, fz_area[@as(usize, @bitCast(@as(c_long, FZ_GUARD + FZ_MAXLEN))) +% i]) == FZ_FILL) @as(c_int, 1) else @as(c_int, 0)));
+            _ = @sizeOf(@TypeOf(if (@as(c_int, fz_area[@as(usize, @intCast(FZ_GUARD + FZ_MAXLEN)) +% i]) == FZ_FILL) @as(c_int, 1) else @as(c_int, 0)));
             {
-                if (@as(c_int, fz_area[@as(usize, @bitCast(@as(c_long, FZ_GUARD + FZ_MAXLEN))) +% i]) == FZ_FILL) {} else {
+                if (@as(c_int, fz_area[@as(usize, @intCast(FZ_GUARD + FZ_MAXLEN)) +% i]) == FZ_FILL) {} else {
                     __assert_fail("fz_area[FZ_GUARD + FZ_MAXLEN + i] == FZ_FILL", "tests/fuzz/fuzz-api.c", 284, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
                 }
             }
@@ -1503,9 +1509,9 @@ pub fn fz_check_read(arg_ret: isize, arg_len: usize) callconv(.c) void {
     };
     _ = &static_local___PRETTY_FUNCTION__;
     if (ret >= @as(isize, 0)) {
-        _ = @sizeOf(@TypeOf(if (@as(usize, @bitCast(@as(c_long, ret))) == len) @as(c_int, 1) else @as(c_int, 0)));
+        _ = @sizeOf(@TypeOf(if (@as(usize, @intCast(ret)) == len) @as(c_int, 1) else @as(c_int, 0)));
         {
-            if (@as(usize, @bitCast(@as(c_long, ret))) == len) {} else {
+            if (@as(usize, @intCast(ret)) == len) {} else {
                 __assert_fail("(size_t)ret == len", "tests/fuzz/fuzz-api.c", 304, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
             }
         }
@@ -1517,7 +1523,7 @@ pub fn fz_check_read(arg_ret: isize, arg_len: usize) callconv(.c) void {
             }
         }
     }
-    fz_check_buf(if (ret > @as(isize, 0)) @as(usize, @bitCast(@as(c_long, ret))) else @as(usize, 0));
+    fz_check_buf(if (ret > @as(isize, 0)) @as(usize, @intCast(ret)) else @as(usize, 0));
 }
 pub const FZ_OP_ALLOC: c_int = 0;
 pub const FZ_OP_FREE: c_int = 1;
@@ -1599,15 +1605,15 @@ pub fn fz_op_read_null(arg_s: [*c]struct_fz_state, arg_slots: [*c]?*struct_rand_
         }
     }
     fz_check_buf(0);
-    _ = @sizeOf(@TypeOf(if (jent_read_entropy(slots[slot], null, if (len != 0) len else @as(c_ulong, 18446744073709551615)) == @as(isize, -@as(c_int, 1))) @as(c_int, 1) else @as(c_int, 0)));
+    _ = @sizeOf(@TypeOf(if (jent_read_entropy(slots[slot], null, if (len != 0) len else @import("std").math.maxInt(usize)) == @as(isize, -@as(c_int, 1))) @as(c_int, 1) else @as(c_int, 0)));
     {
-        if (jent_read_entropy(slots[slot], null, if (len != 0) len else @as(c_ulong, 18446744073709551615)) == @as(isize, -@as(c_int, 1))) {} else {
+        if (jent_read_entropy(slots[slot], null, if (len != 0) len else @import("std").math.maxInt(usize)) == @as(isize, -@as(c_int, 1))) {} else {
             __assert_fail("jent_read_entropy(slots[slot], NULL, len ? len : SIZE_MAX) == JENT_ERR_EINVAL", "tests/fuzz/fuzz-api.c", 387, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
         }
     }
-    _ = @sizeOf(@TypeOf(if (jent_read_entropy(null, null, @as(c_ulong, 18446744073709551615)) == @as(isize, -@as(c_int, 1))) @as(c_int, 1) else @as(c_int, 0)));
+    _ = @sizeOf(@TypeOf(if (jent_read_entropy(null, null, @import("std").math.maxInt(usize)) == @as(isize, -@as(c_int, 1))) @as(c_int, 1) else @as(c_int, 0)));
     {
-        if (jent_read_entropy(null, null, @as(c_ulong, 18446744073709551615)) == @as(isize, -@as(c_int, 1))) {} else {
+        if (jent_read_entropy(null, null, @import("std").math.maxInt(usize)) == @as(isize, -@as(c_int, 1))) {} else {
             __assert_fail("jent_read_entropy(NULL, NULL, SIZE_MAX) == JENT_ERR_EINVAL", "tests/fuzz/fuzz-api.c", 389, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
         }
     }
@@ -1647,9 +1653,9 @@ pub fn fz_op_read_safe_null(arg_s: [*c]struct_fz_state, arg_slots: [*c]?*struct_
         }
     }
     fz_check_buf(0);
-    _ = @sizeOf(@TypeOf(if (jent_read_entropy_safe(&slots[slot], null, if (len != 0) len else @as(c_ulong, 18446744073709551615)) == @as(isize, -@as(c_int, 1))) @as(c_int, 1) else @as(c_int, 0)));
+    _ = @sizeOf(@TypeOf(if (jent_read_entropy_safe(&slots[slot], null, if (len != 0) len else @import("std").math.maxInt(usize)) == @as(isize, -@as(c_int, 1))) @as(c_int, 1) else @as(c_int, 0)));
     {
-        if (jent_read_entropy_safe(&slots[slot], null, if (len != 0) len else @as(c_ulong, 18446744073709551615)) == @as(isize, -@as(c_int, 1))) {} else {
+        if (jent_read_entropy_safe(&slots[slot], null, if (len != 0) len else @import("std").math.maxInt(usize)) == @as(isize, -@as(c_int, 1))) {} else {
             __assert_fail("jent_read_entropy_safe(&slots[slot], NULL, len ? len : SIZE_MAX) == JENT_ERR_EINVAL", "tests/fuzz/fuzz-api.c", 415, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
         }
     }
@@ -1745,9 +1751,9 @@ pub fn fz_op_uuid(arg_s: [*c]struct_fz_state, arg_slots: [*c]?*struct_rand_data)
                 __assert_fail("buflen >= JENT_UUID_STRLEN", "tests/fuzz/fuzz-api.c", 463, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
             }
         }
-        _ = @sizeOf(@TypeOf(if (strlen(buf) == @as(usize, @bitCast(@as(c_long, JENT_UUID_STRLEN - @as(c_int, 1))))) @as(c_int, 1) else @as(c_int, 0)));
+        _ = @sizeOf(@TypeOf(if (strlen(buf) == @as(usize, @intCast(JENT_UUID_STRLEN - @as(c_int, 1)))) @as(c_int, 1) else @as(c_int, 0)));
         {
-            if (strlen(buf) == @as(usize, @bitCast(@as(c_long, JENT_UUID_STRLEN - @as(c_int, 1))))) {} else {
+            if (strlen(buf) == @as(usize, @intCast(JENT_UUID_STRLEN - @as(c_int, 1)))) {} else {
                 __assert_fail("strlen(buf) == JENT_UUID_STRLEN - 1", "tests/fuzz/fuzz-api.c", 464, @ptrCast(@alignCast(&static_local___PRETTY_FUNCTION__.__PRETTY_FUNCTION__)));
             }
         }
@@ -2673,7 +2679,10 @@ pub const E2BIG = @as(c_int, 7);
 pub const ENOEXEC = @as(c_int, 8);
 pub const EBADF = @as(c_int, 9);
 pub const ECHILD = @as(c_int, 10);
-pub const EAGAIN = @as(c_int, 11);
+pub const EAGAIN: c_int = switch (@import("builtin").os.tag) {
+    .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .netbsd, .openbsd, .dragonfly => 35,
+    else => 11,
+};
 pub const ENOMEM = @as(c_int, 12);
 pub const EACCES = @as(c_int, 13);
 pub const EFAULT = @as(c_int, 14);
@@ -2799,7 +2808,6 @@ pub const ENOTRECOVERABLE = @as(c_int, 131);
 pub const ERFKILL = @as(c_int, 132);
 pub const EHWPOISON = @as(c_int, 133);
 pub const ENOTSUP = EOPNOTSUPP;
-pub const errno = __errno_location().*;
 pub const _GCC_LIMITS_H_ = "";
 pub const __CLANG_LIMITS_H = "";
 pub const _LIBC_LIMITS_H_ = @as(c_int, 1);

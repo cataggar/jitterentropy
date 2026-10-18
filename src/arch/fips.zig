@@ -3,9 +3,18 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const root = @import("root");
+const internal = @import("../internal.zig");
 const is_linux_kernel = @hasDecl(root, "is_linux_kernel") and root.is_linux_kernel;
+const external_crypto = internal.build_options.external_crypto;
 
 extern fn jent_kshim_fips_enabled() callconv(.c) c_int;
+extern fn gcry_control(cmd: c_uint, ...) callconv(.c) c_int;
+extern fn FIPS_mode() callconv(.c) c_int;
+extern fn EVP_default_properties_is_fips_enabled(libctx: ?*anyopaque) callconv(.c) c_int;
+extern "c" fn getenv(name: [*:0]const u8) ?[*:0]const u8;
+extern "c" fn access(path: [*:0]const u8, mode: c_int) c_int;
+extern "c" fn _access(path: [*:0]const u8, mode: c_int) c_int;
+extern "bcrypt" fn BCryptGetFipsAlgorithmMode(pfEnabled: *u8) callconv(.winapi) i32;
 
 const linux = struct {
     const O_RDONLY: c_int = 0;
@@ -43,8 +52,36 @@ pub fn jent_fips_enabled_file(file: [*:0]const u8) callconv(.c) c_int {
 
 pub fn jent_fi_real_fips_enabled() callconv(.c) c_int {
     if (is_linux_kernel) return jent_kshim_fips_enabled();
+    if (comptime external_crypto == .libgcrypt) {
+        const GCRYCTL_ANY_INITIALIZATION_P: c_uint = 38;
+        const GCRYCTL_FIPS_MODE_P: c_uint = 55;
+        if (gcry_control(GCRYCTL_ANY_INITIALIZATION_P, @as(c_int, 0)) != 0) {
+            return if (gcry_control(GCRYCTL_FIPS_MODE_P, @as(c_int, 0)) != 0) 1 else 0;
+        }
+        if (getenv("LIBGCRYPT_FORCE_FIPS_MODE") != null) return 1;
+        if (comptime builtin.os.tag == .windows) {
+            if (_access("/etc/gcrypt/fips_enabled", 0) == 0) return 1;
+        } else {
+            if (access("/etc/gcrypt/fips_enabled", 0) == 0) return 1;
+        }
+        if (comptime builtin.os.tag == .linux and builtin.link_libc) {
+            return jent_fips_enabled_file("/proc/sys/crypto/fips_enabled");
+        }
+        return 0;
+    }
+    if (comptime external_crypto == .awslc) {
+        return if (FIPS_mode() != 0) 1 else 0;
+    }
+    if (comptime external_crypto == .openssl) {
+        return if (EVP_default_properties_is_fips_enabled(null) != 0) 1 else 0;
+    }
     if (comptime builtin.os.tag == .linux and builtin.link_libc) {
         return jent_fips_enabled_file("/proc/sys/crypto/fips_enabled");
+    }
+    if (comptime builtin.os.tag == .windows and builtin.link_libc) {
+        var enabled: u8 = 0;
+        if (BCryptGetFipsAlgorithmMode(&enabled) < 0) return 0;
+        return if (enabled != 0) 1 else 0;
     }
     return 0;
 }

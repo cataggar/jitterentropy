@@ -3,7 +3,7 @@ const i = @import("internal.zig");
 
 const RandData = i.rand_data;
 
-extern fn jent_mock_timer_active() callconv(.c) c_int;
+const arch_timer = @import("arch/timer.zig");
 
 const StatusWriter = struct {
     buf: [*]u8,
@@ -132,7 +132,7 @@ pub fn jent_status(ec_opt: ?*const RandData, buf_opt: ?[*]u8, buflen: usize) cal
     out.print("\t\t\"internalTimer\": {s},\n", .{boolText(ec.enableNotime() != 0)});
     if (i.build_options.mock_timer) {
         out.add("\t\t\"mockedTimerBuild\": true,\n");
-        out.print("\t\t\"mockedTimerActive\": {s},\n", .{boolText(jent_mock_timer_active() != 0)});
+        out.print("\t\t\"mockedTimerActive\": {s},\n", .{boolText(arch_timer.jent_mock_timer_active() != 0)});
     } else {
         out.add("\t\t\"mockedTimerBuild\": false,\n");
     }

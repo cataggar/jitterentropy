@@ -15,6 +15,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const JENT_STATUS_MAX_LEN: u32 = 4096;
 const JENT_IOC_MAGIC: u8 = 'J';
 
@@ -64,7 +69,7 @@ pub export fn main(argc: c_int, argv: [*]const [*:0]const u8) callconv(.c) c_int
         _ = fprintf(stderr, "JENT_IOCSTATUS with zero-length buffer succeeded\n");
         return 1;
     }
-    if (__errno_location().* != @backingInt(linux.E.OVERFLOW)) {
+    if (__errno_location().* != 75) {
         perror("JENT_IOCSTATUS (probe)");
         return 1;
     }

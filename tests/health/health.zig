@@ -3,6 +3,11 @@ const builtin = @import("builtin");
 const health = @import("jent").health;
 const internal = health.internal;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const FILE = opaque {};
 extern fn printf(format: [*:0]const u8, ...) callconv(.c) c_int;
 extern fn fopen(path: [*:0]const u8, mode: [*:0]const u8) callconv(.c) ?*FILE;
@@ -37,12 +42,8 @@ var failures: c_uint = 0;
 var skipped: c_uint = 0;
 
 fn errnoPointer() *c_int {
-    return if (builtin.os.tag == .windows)
-        _errno()
-    else if (builtin.os.tag == .linux)
-        __errno_location()
-    else
-        __error();
+    if (builtin.os.tag == .dragonfly) return __error();
+    return std.c._errno();
 }
 
 pub export fn jent_random_data(ec: *rand_data) callconv(.c) void {

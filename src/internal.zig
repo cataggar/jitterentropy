@@ -600,119 +600,361 @@ pub const jent_measure_jitter_cb = *const fn (*rand_data, u64, ?*u64, c_int) cal
 // Extern C Declarations for Incremental C/Zig Interop
 // ============================================================================
 
+const use_direct_bindings = @hasDecl(build_options, "export_internals") and !build_options.export_internals;
+
+const direct_bindings = struct {
+    const base = @import("base.zig");
+    const status = @import("status.zig");
+    const timer = @import("timer.zig");
+    const sha3 = @import("sha3.zig");
+    const gcd = @import("gcd.zig");
+    const health = @import("health.zig");
+    const noise = @import("noise.zig");
+    const uuid = @import("uuid.zig");
+    const arch_atomic = @import("arch/atomic.zig");
+    const arch_cache = @import("arch/cache.zig");
+    const arch_fips = @import("arch/fips.zig");
+    const arch_memory = @import("arch/memory.zig");
+    const arch_ncpu = @import("arch/ncpu.zig");
+    const arch_random = @import("arch/random.zig");
+    const arch_sched = @import("arch/sched.zig");
+    const arch_thread = @import("arch/thread.zig");
+    const arch_timer = @import("arch/timer.zig");
+
+    pub const jent_read_entropy = base.jent_read_entropy;
+    pub const jent_read_entropy_safe = base.jent_read_entropy_safe;
+    pub const jent_entropy_collector_alloc = base.jent_entropy_collector_alloc;
+    pub const jent_entropy_collector_alloc_internal = base.jent_entropy_collector_alloc_internal;
+    pub const jent_entropy_collector_free = base.jent_entropy_collector_free;
+    pub const jent_entropy_init = base.jent_entropy_init;
+    pub const jent_entropy_init_ex = base.jent_entropy_init_ex;
+    pub const jent_selftest = base.jent_selftest;
+    pub const jent_set_fips_failure_callback = base.jent_set_fips_failure_callback;
+    pub const jent_version = base.jent_version;
+    pub const jent_status = status.jent_status;
+    pub const jent_entropy_collector_uuid = status.jent_entropy_collector_uuid;
+    pub const jent_entropy_collector_osr = status.jent_entropy_collector_osr;
+    pub const jent_entropy_collector_flags = status.jent_entropy_collector_flags;
+    pub const jent_entropy_collector_memsize = status.jent_entropy_collector_memsize;
+    pub const jent_entropy_collector_health_failure = status.jent_entropy_collector_health_failure;
+    pub const jent_entropy_collector_reinitializations = status.jent_entropy_collector_reinitializations;
+    pub const jent_entropy_collector_read_invocations = status.jent_entropy_collector_read_invocations;
+    pub const jent_entropy_collector_bytes_output = status.jent_entropy_collector_bytes_output;
+    pub const jent_entropy_collector_hashloops = status.jent_entropy_collector_hashloops;
+    pub const jent_secure_memory_supported = arch_memory.jent_secure_memory_supported;
+    pub const jent_entropy_switch_notime_impl = base.jent_entropy_switch_notime_impl;
+    pub const jent_entropy_set_notime_cpu = base.jent_entropy_set_notime_cpu;
+    pub const jent_notime_init = timer.jent_notime_init;
+    pub const jent_notime_fini = timer.jent_notime_fini;
+
+    pub const jent_time_entropy_init = base.jent_time_entropy_init;
+    pub const jent_memsize = base.jent_memsize;
+    pub const jent_hashloop_cnt = base.jent_hashloop_cnt;
+
+    pub const jent_sha3_256_init = sha3.jent_sha3_256_init;
+    pub const jent_sha3_update = sha3.jent_sha3_update;
+    pub const jent_sha3_final = sha3.jent_sha3_final;
+    pub const jent_sha3_tester = sha3.jent_sha3_tester;
+    pub const jent_shake256_init = sha3.jent_shake256_init;
+    pub const jent_drbg_generate_block = sha3.jent_drbg_generate_block;
+
+    pub const jent_gcd64 = gcd.jent_gcd64;
+    pub const jent_gcd_analyze_internal = gcd.jent_gcd_analyze_internal;
+    pub const jent_gcd_analyze = gcd.jent_gcd_analyze;
+    pub const jent_gcd_verdict = gcd.jent_gcd_verdict;
+    pub const jent_gcd_store = gcd.jent_gcd_store;
+    pub const jent_gcd_init = gcd.jent_gcd_init;
+    pub const jent_gcd_fini = gcd.jent_gcd_fini;
+    pub const jent_gcd_get = gcd.jent_gcd_get;
+    pub const jent_gcd_selftest = gcd.jent_gcd_selftest;
+
+    pub const jent_health_cb_block_switch = health.jent_health_cb_block_switch;
+    pub const jent_set_fips_failure_callback_internal = health.jent_set_fips_failure_callback_internal;
+    pub const jent_lag_duplicate = health.jent_lag_duplicate;
+    pub const jent_apt_duplicate = health.jent_apt_duplicate;
+    pub const jent_rct_duplicate = health.jent_rct_duplicate;
+    pub const jent_rct_mem_duplicate = health.jent_rct_mem_duplicate;
+    pub const jent_health_duplicate = health.jent_health_duplicate;
+    pub const jent_stuck = health.jent_stuck;
+    pub const jent_health_insert_timestamp = health.jent_health_insert_timestamp;
+    pub const jent_health_failure_query = health.jent_health_failure_query;
+    pub const jent_health_failure = health.jent_health_failure;
+    pub const jent_health_init = health.jent_health_init;
+
+    pub const jent_get_nstime_internal = timer.jent_get_nstime_internal;
+    pub const jent_measure_jitter_ntg1_memaccess = noise.jent_measure_jitter_ntg1_memaccess;
+    pub const jent_measure_jitter_ntg1_sha3 = noise.jent_measure_jitter_ntg1_sha3;
+    pub const jent_measure_jitter = noise.jent_measure_jitter;
+    pub const jent_random_data_one = noise.jent_random_data_one;
+    pub const jent_random_data = noise.jent_random_data;
+    pub const jent_read_random_block = noise.jent_read_random_block;
+
+    pub const jent_uuid_format = uuid.jent_uuid_format;
+    pub const jent_uuid_from_counter = uuid.jent_uuid_from_counter;
+    pub const jent_uuid_generate = uuid.jent_uuid_generate;
+
+    pub const jent_atomic_load_int = arch_atomic.jent_atomic_load_int;
+    pub const jent_atomic_store_int = arch_atomic.jent_atomic_store_int;
+    pub const jent_atomic_exchange_int = arch_atomic.jent_atomic_exchange_int;
+    pub const jent_atomic_load_u32 = arch_atomic.jent_atomic_load_u32;
+    pub const jent_atomic_inc_u32 = arch_atomic.jent_atomic_inc_u32;
+    pub const jent_atomic_cmpxchg_u32 = arch_atomic.jent_atomic_cmpxchg_u32;
+    pub const jent_atomic_store_u32 = arch_atomic.jent_atomic_store_u32;
+    pub const jent_atomic_load_ptr = arch_atomic.jent_atomic_load_ptr;
+    pub const jent_atomic_store_ptr = arch_atomic.jent_atomic_store_ptr;
+    pub const jent_atomic_cas_ptr = arch_atomic.jent_atomic_cas_ptr;
+    pub const jent_atomic_load_fips_cb = arch_atomic.jent_atomic_load_fips_cb;
+    pub const jent_atomic_store_fips_cb = arch_atomic.jent_atomic_store_fips_cb;
+
+    pub const jent_cache_size_roundup = arch_cache.jent_cache_size_roundup;
+    pub const jent_fips_enabled = arch_fips.jent_fips_enabled;
+    pub const jent_fi_real_fips_enabled = arch_fips.jent_fi_real_fips_enabled;
+
+    pub const jent_memset_secure = arch_memory.jent_memset_secure;
+    pub const jent_zalloc = arch_memory.jent_zalloc;
+    pub const jent_zalloc_unlocked = arch_memory.jent_zalloc_unlocked;
+    pub const jent_zfree = arch_memory.jent_zfree;
+    pub const jent_memory_is_secure = arch_memory.jent_memory_is_secure;
+    pub const jent_memory_backend_name = arch_memory.jent_memory_backend_name;
+
+    pub const jent_ncpu = arch_ncpu.jent_ncpu;
+    pub const jent_cpu_highest = arch_ncpu.jent_cpu_highest;
+    pub const jent_thread_pin_to_cpu = arch_thread.jent_thread_pin_to_cpu;
+    pub const jent_notime_thread_create = arch_thread.jent_notime_thread_create;
+    pub const jent_notime_thread_join = arch_thread.jent_notime_thread_join;
+
+    pub const jent_os_random_bytes = arch_random.jent_os_random_bytes;
+    pub const jent_os_random_supported = arch_random.jent_os_random_supported;
+
+    pub const jent_yield = arch_sched.jent_yield;
+    pub const jent_get_nstime = arch_timer.jent_get_nstime;
+    pub const jent_set_mock_timer = arch_timer.jent_set_mock_timer;
+};
+
+const extern_bindings = struct {
+    pub extern fn jent_read_entropy(ec: ?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
+    pub extern fn jent_read_entropy_safe(ec: ?*?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
+    pub extern fn jent_entropy_collector_alloc(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
+    pub extern fn jent_entropy_collector_alloc_internal(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
+    pub extern fn jent_entropy_collector_free(entropy_collector: ?*rand_data) callconv(.c) void;
+    pub extern fn jent_entropy_init() callconv(.c) c_int;
+    pub extern fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) callconv(.c) c_int;
+    pub extern fn jent_selftest(ec: ?*rand_data) callconv(.c) c_int;
+    pub extern fn jent_set_fips_failure_callback(cb: jent_fips_failure_cb) callconv(.c) c_int;
+    pub extern fn jent_version() callconv(.c) c_uint;
+    pub extern fn jent_status(ec: ?*const rand_data, buf: ?[*]u8, buflen: usize) callconv(.c) c_int;
+    pub extern fn jent_entropy_collector_uuid(ec: ?*const rand_data, buf: ?[*]u8, buflen: usize) callconv(.c) c_int;
+    pub extern fn jent_entropy_collector_osr(ec: ?*const rand_data) callconv(.c) c_uint;
+    pub extern fn jent_entropy_collector_flags(ec: ?*const rand_data) callconv(.c) c_uint;
+    pub extern fn jent_entropy_collector_memsize(ec: ?*const rand_data) callconv(.c) usize;
+    pub extern fn jent_entropy_collector_health_failure(ec: ?*const rand_data) callconv(.c) c_uint;
+    pub extern fn jent_entropy_collector_reinitializations(ec: ?*const rand_data) callconv(.c) c_uint;
+    pub extern fn jent_entropy_collector_read_invocations(ec: ?*const rand_data) callconv(.c) u64;
+    pub extern fn jent_entropy_collector_bytes_output(ec: ?*const rand_data) callconv(.c) u64;
+    pub extern fn jent_entropy_collector_hashloops(ec: ?*const rand_data) callconv(.c) c_uint;
+    pub extern fn jent_secure_memory_supported() callconv(.c) c_int;
+    pub extern fn jent_entropy_switch_notime_impl(new_thread: ?*jent_notime_thread) callconv(.c) c_int;
+    pub extern fn jent_entropy_set_notime_cpu(cpu: c_ulong) callconv(.c) c_int;
+    pub extern fn jent_notime_init(ctx: *?*anyopaque) callconv(.c) c_int;
+    pub extern fn jent_notime_fini(ctx: ?*anyopaque) callconv(.c) void;
+
+    pub extern fn jent_time_entropy_init(osr: c_uint, flags: c_uint) callconv(.c) c_int;
+    pub extern fn jent_memsize(flags: c_uint) callconv(.c) u32;
+    pub extern fn jent_hashloop_cnt(flags: c_uint) callconv(.c) c_uint;
+
+    pub extern fn jent_sha3_256_init(ctx: *jent_sha_ctx) callconv(.c) void;
+    pub extern fn jent_sha3_update(ctx: *jent_sha_ctx, in: [*]const u8, inlen: usize) callconv(.c) void;
+    pub extern fn jent_sha3_final(ctx: *jent_sha_ctx, digest: [*]u8) callconv(.c) void;
+    pub extern fn jent_sha3_tester() callconv(.c) c_int;
+    pub extern fn jent_shake256_init(ctx: *jent_sha_ctx) callconv(.c) void;
+    pub extern fn jent_drbg_generate_block(ctx: *jent_sha_ctx, dst: [*]u8, dst_len: usize) callconv(.c) void;
+
+    pub extern fn jent_gcd64(a: u64, b: u64) callconv(.c) u64;
+    pub extern fn jent_gcd_analyze_internal(delta_history: ?[*]u64, nelem: usize, running_gcd_out: *u64, delta_sum_out: *u64) callconv(.c) c_int;
+    pub extern fn jent_gcd_analyze(delta_history: ?[*]u64, nelem: usize, osr: usize, notime: c_uint) callconv(.c) c_int;
+    pub extern fn jent_gcd_verdict(delta_history: ?[*]u64, nelem: usize, osr: usize, gcd: *u64) callconv(.c) c_int;
+    pub extern fn jent_gcd_store(gcd: u64, notime: c_uint) callconv(.c) void;
+    pub extern fn jent_gcd_init(nelem: usize, flags: c_uint) callconv(.c) ?[*]u64;
+    pub extern fn jent_gcd_fini(delta_history: ?[*]u64, nelem: usize) callconv(.c) void;
+    pub extern fn jent_gcd_get(value: *u64, notime: c_uint) callconv(.c) c_int;
+    pub extern fn jent_gcd_selftest(flags: c_uint) callconv(.c) c_int;
+
+    pub extern fn jent_health_cb_block_switch() callconv(.c) void;
+    pub extern fn jent_set_fips_failure_callback_internal(cb: jent_fips_failure_cb) callconv(.c) c_int;
+    pub extern fn jent_lag_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
+    pub extern fn jent_apt_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
+    pub extern fn jent_rct_duplicate(new_ec: *rand_data) callconv(.c) void;
+    pub extern fn jent_rct_mem_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
+    pub extern fn jent_health_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
+    pub extern fn jent_stuck(ec: *rand_data, current_delta: u64) callconv(.c) c_uint;
+    pub extern fn jent_health_insert_timestamp(ec: *rand_data, timestamp: u64) callconv(.c) c_uint;
+    pub extern fn jent_health_failure_query(ec: *const rand_data) callconv(.c) c_uint;
+    pub extern fn jent_health_failure(ec: *rand_data) callconv(.c) c_uint;
+    pub extern fn jent_health_init(ec: *rand_data, inittype: jent_health_init_type) callconv(.c) c_int;
+
+    pub extern fn jent_get_nstime_internal(ec: *rand_data, out: *u64) callconv(.c) void;
+    pub extern fn jent_measure_jitter_ntg1_memaccess(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
+    pub extern fn jent_measure_jitter_ntg1_sha3(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
+    pub extern fn jent_measure_jitter(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
+    pub extern fn jent_random_data_one(ec: *rand_data, measure_jitter: jent_measure_jitter_cb) callconv(.c) void;
+    pub extern fn jent_random_data(ec: *rand_data) callconv(.c) void;
+    pub extern fn jent_read_random_block(ec: *rand_data, dst: [*]u8, dst_len: usize) callconv(.c) void;
+
+    pub extern fn jent_uuid_format(bytes: [*]const u8, out: [*]u8) callconv(.c) void;
+    pub extern fn jent_uuid_from_counter(bytes: [*]u8) callconv(.c) void;
+    pub extern fn jent_uuid_generate(out: [*]u8) callconv(.c) void;
+
+    pub extern fn jent_atomic_load_int(ptr: *const c_int) callconv(.c) c_int;
+    pub extern fn jent_atomic_store_int(ptr: *c_int, val: c_int) callconv(.c) void;
+    pub extern fn jent_atomic_exchange_int(ptr: *c_int, val: c_int) callconv(.c) c_int;
+    pub extern fn jent_atomic_load_u32(ptr: *const u32) callconv(.c) u32;
+    pub extern fn jent_atomic_inc_u32(ptr: *u32) callconv(.c) u32;
+    pub extern fn jent_atomic_cmpxchg_u32(ptr: *u32, old: u32, val: u32) callconv(.c) u32;
+    pub extern fn jent_atomic_store_u32(ptr: *u32, val: u32) callconv(.c) void;
+    pub extern fn jent_atomic_load_ptr(ptr: *const ?*anyopaque) callconv(.c) ?*anyopaque;
+    pub extern fn jent_atomic_store_ptr(ptr: *?*anyopaque, val: ?*anyopaque) callconv(.c) void;
+    pub extern fn jent_atomic_cas_ptr(ptr: *?*anyopaque, old: ?*anyopaque, val: ?*anyopaque) callconv(.c) ?*anyopaque;
+    pub extern fn jent_atomic_load_fips_cb(ptr: *const jent_fips_failure_cb) callconv(.c) jent_fips_failure_cb;
+    pub extern fn jent_atomic_store_fips_cb(ptr: *jent_fips_failure_cb, val: jent_fips_failure_cb) callconv(.c) void;
+
+    pub extern fn jent_cache_size_roundup(all_caches: c_int) callconv(.c) u64;
+    pub extern fn jent_fips_enabled() callconv(.c) c_int;
+    pub extern fn jent_fi_real_fips_enabled() callconv(.c) c_int;
+
+    pub extern fn jent_memset_secure(s: ?*anyopaque, n: usize) callconv(.c) void;
+    pub extern fn jent_zalloc(len: usize, flags: c_uint) callconv(.c) ?*anyopaque;
+    pub extern fn jent_zalloc_unlocked(len: usize) callconv(.c) ?*anyopaque;
+    pub extern fn jent_zfree(ptr: ?*anyopaque, len: usize) callconv(.c) void;
+    pub extern fn jent_memory_is_secure(flags: c_uint) callconv(.c) c_int;
+    pub extern fn jent_memory_backend_name() callconv(.c) [*:0]const u8;
+
+    pub extern fn jent_ncpu() callconv(.c) c_long;
+    pub extern fn jent_cpu_highest() callconv(.c) c_long;
+    pub extern fn jent_thread_pin_to_cpu(cpu: c_ulong) callconv(.c) c_int;
+    pub extern fn jent_notime_thread_create(ctx: *jent_notime_ctx, routine: jent_notime_start_routine, arg: ?*anyopaque) callconv(.c) c_int;
+    pub extern fn jent_notime_thread_join(ctx: *jent_notime_ctx) callconv(.c) void;
+
+    pub extern fn jent_os_random_bytes(buf: [*]u8, len: usize) callconv(.c) c_int;
+    pub extern fn jent_os_random_supported() callconv(.c) c_int;
+
+    pub extern fn jent_yield() callconv(.c) void;
+    pub extern fn jent_get_nstime(out: *u64) callconv(.c) void;
+    pub extern fn jent_set_mock_timer(cb: jent_mock_timer_cb, arg: ?*anyopaque) callconv(.c) c_int;
+};
+
+const bindings = if (use_direct_bindings) direct_bindings else extern_bindings;
+
 // Public API (jitterentropy.h)
-pub extern fn jent_read_entropy(ec: ?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
-pub extern fn jent_read_entropy_safe(ec: ?*?*rand_data, data: ?[*]u8, len: usize) callconv(.c) isize;
-pub extern fn jent_entropy_collector_alloc(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
-pub extern fn jent_entropy_collector_alloc_internal(osr: c_uint, flags: c_uint) callconv(.c) ?*rand_data;
-pub extern fn jent_entropy_collector_free(entropy_collector: ?*rand_data) callconv(.c) void;
-pub extern fn jent_entropy_init() callconv(.c) c_int;
-pub extern fn jent_entropy_init_ex(osr: c_uint, flags: c_uint) callconv(.c) c_int;
-pub extern fn jent_selftest(ec: ?*rand_data) callconv(.c) c_int;
-pub extern fn jent_set_fips_failure_callback(cb: jent_fips_failure_cb) callconv(.c) c_int;
-pub extern fn jent_version() callconv(.c) c_uint;
-pub extern fn jent_status(ec: ?*const rand_data, buf: ?[*]u8, buflen: usize) callconv(.c) c_int;
-pub extern fn jent_entropy_collector_uuid(ec: ?*const rand_data, buf: ?[*]u8, buflen: usize) callconv(.c) c_int;
-pub extern fn jent_entropy_collector_osr(ec: ?*const rand_data) callconv(.c) c_uint;
-pub extern fn jent_entropy_collector_flags(ec: ?*const rand_data) callconv(.c) c_uint;
-pub extern fn jent_entropy_collector_memsize(ec: ?*const rand_data) callconv(.c) usize;
-pub extern fn jent_entropy_collector_health_failure(ec: ?*const rand_data) callconv(.c) c_uint;
-pub extern fn jent_entropy_collector_reinitializations(ec: ?*const rand_data) callconv(.c) c_uint;
-pub extern fn jent_entropy_collector_read_invocations(ec: ?*const rand_data) callconv(.c) u64;
-pub extern fn jent_entropy_collector_bytes_output(ec: ?*const rand_data) callconv(.c) u64;
-pub extern fn jent_entropy_collector_hashloops(ec: ?*const rand_data) callconv(.c) c_uint;
-pub extern fn jent_secure_memory_supported() callconv(.c) c_int;
-pub extern fn jent_entropy_switch_notime_impl(new_thread: ?*jent_notime_thread) callconv(.c) c_int;
-pub extern fn jent_entropy_set_notime_cpu(cpu: c_ulong) callconv(.c) c_int;
-pub extern fn jent_notime_init(ctx: *?*anyopaque) callconv(.c) c_int;
-pub extern fn jent_notime_fini(ctx: ?*anyopaque) callconv(.c) void;
+pub const jent_read_entropy = bindings.jent_read_entropy;
+pub const jent_read_entropy_safe = bindings.jent_read_entropy_safe;
+pub const jent_entropy_collector_alloc = bindings.jent_entropy_collector_alloc;
+pub const jent_entropy_collector_alloc_internal = bindings.jent_entropy_collector_alloc_internal;
+pub const jent_entropy_collector_free = bindings.jent_entropy_collector_free;
+pub const jent_entropy_init = bindings.jent_entropy_init;
+pub const jent_entropy_init_ex = bindings.jent_entropy_init_ex;
+pub const jent_selftest = bindings.jent_selftest;
+pub const jent_set_fips_failure_callback = bindings.jent_set_fips_failure_callback;
+pub const jent_version = bindings.jent_version;
+pub const jent_status = bindings.jent_status;
+pub const jent_entropy_collector_uuid = bindings.jent_entropy_collector_uuid;
+pub const jent_entropy_collector_osr = bindings.jent_entropy_collector_osr;
+pub const jent_entropy_collector_flags = bindings.jent_entropy_collector_flags;
+pub const jent_entropy_collector_memsize = bindings.jent_entropy_collector_memsize;
+pub const jent_entropy_collector_health_failure = bindings.jent_entropy_collector_health_failure;
+pub const jent_entropy_collector_reinitializations = bindings.jent_entropy_collector_reinitializations;
+pub const jent_entropy_collector_read_invocations = bindings.jent_entropy_collector_read_invocations;
+pub const jent_entropy_collector_bytes_output = bindings.jent_entropy_collector_bytes_output;
+pub const jent_entropy_collector_hashloops = bindings.jent_entropy_collector_hashloops;
+pub const jent_secure_memory_supported = bindings.jent_secure_memory_supported;
+pub const jent_entropy_switch_notime_impl = bindings.jent_entropy_switch_notime_impl;
+pub const jent_entropy_set_notime_cpu = bindings.jent_entropy_set_notime_cpu;
+pub const jent_notime_init = bindings.jent_notime_init;
+pub const jent_notime_fini = bindings.jent_notime_fini;
 
 // Internal src/ declarations
-pub extern fn jent_time_entropy_init(osr: c_uint, flags: c_uint) callconv(.c) c_int;
-pub extern fn jent_memsize(flags: c_uint) callconv(.c) u32;
-pub extern fn jent_hashloop_cnt(flags: c_uint) callconv(.c) c_uint;
+pub const jent_time_entropy_init = bindings.jent_time_entropy_init;
+pub const jent_memsize = bindings.jent_memsize;
+pub const jent_hashloop_cnt = bindings.jent_hashloop_cnt;
 
-pub extern fn jent_sha3_256_init(ctx: *jent_sha_ctx) callconv(.c) void;
-pub extern fn jent_sha3_update(ctx: *jent_sha_ctx, in: [*]const u8, inlen: usize) callconv(.c) void;
-pub extern fn jent_sha3_final(ctx: *jent_sha_ctx, digest: [*]u8) callconv(.c) void;
-pub extern fn jent_sha3_tester() callconv(.c) c_int;
-pub extern fn jent_shake256_init(ctx: *jent_sha_ctx) callconv(.c) void;
-pub extern fn jent_drbg_generate_block(ctx: *jent_sha_ctx, dst: [*]u8, dst_len: usize) callconv(.c) void;
+pub const jent_sha3_256_init = bindings.jent_sha3_256_init;
+pub const jent_sha3_update = bindings.jent_sha3_update;
+pub const jent_sha3_final = bindings.jent_sha3_final;
+pub const jent_sha3_tester = bindings.jent_sha3_tester;
+pub const jent_shake256_init = bindings.jent_shake256_init;
+pub const jent_drbg_generate_block = bindings.jent_drbg_generate_block;
 
-pub extern fn jent_gcd64(a: u64, b: u64) callconv(.c) u64;
-pub extern fn jent_gcd_analyze_internal(delta_history: ?[*]u64, nelem: usize, running_gcd_out: *u64, delta_sum_out: *u64) callconv(.c) c_int;
-pub extern fn jent_gcd_analyze(delta_history: ?[*]u64, nelem: usize, osr: usize, notime: c_uint) callconv(.c) c_int;
-pub extern fn jent_gcd_verdict(delta_history: ?[*]u64, nelem: usize, osr: usize, gcd: *u64) callconv(.c) c_int;
-pub extern fn jent_gcd_store(gcd: u64, notime: c_uint) callconv(.c) void;
-pub extern fn jent_gcd_init(nelem: usize, flags: c_uint) callconv(.c) ?[*]u64;
-pub extern fn jent_gcd_fini(delta_history: ?[*]u64, nelem: usize) callconv(.c) void;
-pub extern fn jent_gcd_get(value: *u64, notime: c_uint) callconv(.c) c_int;
-pub extern fn jent_gcd_selftest(flags: c_uint) callconv(.c) c_int;
+pub const jent_gcd64 = bindings.jent_gcd64;
+pub const jent_gcd_analyze_internal = bindings.jent_gcd_analyze_internal;
+pub const jent_gcd_analyze = bindings.jent_gcd_analyze;
+pub const jent_gcd_verdict = bindings.jent_gcd_verdict;
+pub const jent_gcd_store = bindings.jent_gcd_store;
+pub const jent_gcd_init = bindings.jent_gcd_init;
+pub const jent_gcd_fini = bindings.jent_gcd_fini;
+pub const jent_gcd_get = bindings.jent_gcd_get;
+pub const jent_gcd_selftest = bindings.jent_gcd_selftest;
 
-pub extern fn jent_health_cb_block_switch() callconv(.c) void;
-pub extern fn jent_set_fips_failure_callback_internal(cb: jent_fips_failure_cb) callconv(.c) c_int;
-pub extern fn jent_lag_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
-pub extern fn jent_apt_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
-pub extern fn jent_rct_duplicate(new_ec: *rand_data) callconv(.c) void;
-pub extern fn jent_rct_mem_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
-pub extern fn jent_health_duplicate(new_ec: *rand_data, old_ec: *rand_data) callconv(.c) void;
-pub extern fn jent_stuck(ec: *rand_data, current_delta: u64) callconv(.c) c_uint;
-pub extern fn jent_health_insert_timestamp(ec: *rand_data, timestamp: u64) callconv(.c) c_uint;
-pub extern fn jent_health_failure_query(ec: *const rand_data) callconv(.c) c_uint;
-pub extern fn jent_health_failure(ec: *rand_data) callconv(.c) c_uint;
-pub extern fn jent_health_init(ec: *rand_data, inittype: jent_health_init_type) callconv(.c) c_int;
+pub const jent_health_cb_block_switch = bindings.jent_health_cb_block_switch;
+pub const jent_set_fips_failure_callback_internal = bindings.jent_set_fips_failure_callback_internal;
+pub const jent_lag_duplicate = bindings.jent_lag_duplicate;
+pub const jent_apt_duplicate = bindings.jent_apt_duplicate;
+pub const jent_rct_duplicate = bindings.jent_rct_duplicate;
+pub const jent_rct_mem_duplicate = bindings.jent_rct_mem_duplicate;
+pub const jent_health_duplicate = bindings.jent_health_duplicate;
+pub const jent_stuck = bindings.jent_stuck;
+pub const jent_health_insert_timestamp = bindings.jent_health_insert_timestamp;
+pub const jent_health_failure_query = bindings.jent_health_failure_query;
+pub const jent_health_failure = bindings.jent_health_failure;
+pub const jent_health_init = bindings.jent_health_init;
 
-pub extern fn jent_get_nstime_internal(ec: *rand_data, out: *u64) callconv(.c) void;
-pub extern fn jent_measure_jitter_ntg1_memaccess(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
-pub extern fn jent_measure_jitter_ntg1_sha3(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
-pub extern fn jent_measure_jitter(ec: *rand_data, loop_cnt: u64, ret_current_delta: ?*u64, health: c_int) callconv(.c) c_uint;
-pub extern fn jent_random_data_one(ec: *rand_data, measure_jitter: jent_measure_jitter_cb) callconv(.c) void;
-pub extern fn jent_random_data(ec: *rand_data) callconv(.c) void;
-pub extern fn jent_read_random_block(ec: *rand_data, dst: [*]u8, dst_len: usize) callconv(.c) void;
+pub const jent_get_nstime_internal = bindings.jent_get_nstime_internal;
+pub const jent_measure_jitter_ntg1_memaccess = bindings.jent_measure_jitter_ntg1_memaccess;
+pub const jent_measure_jitter_ntg1_sha3 = bindings.jent_measure_jitter_ntg1_sha3;
+pub const jent_measure_jitter = bindings.jent_measure_jitter;
+pub const jent_random_data_one = bindings.jent_random_data_one;
+pub const jent_random_data = bindings.jent_random_data;
+pub const jent_read_random_block = bindings.jent_read_random_block;
 
-pub extern fn jent_uuid_format(bytes: [*]const u8, out: [*]u8) callconv(.c) void;
-pub extern fn jent_uuid_from_counter(bytes: [*]u8) callconv(.c) void;
-pub extern fn jent_uuid_generate(out: [*]u8) callconv(.c) void;
+pub const jent_uuid_format = bindings.jent_uuid_format;
+pub const jent_uuid_from_counter = bindings.jent_uuid_from_counter;
+pub const jent_uuid_generate = bindings.jent_uuid_generate;
 
 // Internal arch/ declarations
-pub extern fn jent_atomic_load_int(ptr: *const c_int) callconv(.c) c_int;
-pub extern fn jent_atomic_store_int(ptr: *c_int, val: c_int) callconv(.c) void;
-pub extern fn jent_atomic_exchange_int(ptr: *c_int, val: c_int) callconv(.c) c_int;
-pub extern fn jent_atomic_load_u32(ptr: *const u32) callconv(.c) u32;
-pub extern fn jent_atomic_inc_u32(ptr: *u32) callconv(.c) u32;
-pub extern fn jent_atomic_cmpxchg_u32(ptr: *u32, old: u32, val: u32) callconv(.c) u32;
-pub extern fn jent_atomic_store_u32(ptr: *u32, val: u32) callconv(.c) void;
-pub extern fn jent_atomic_load_u64(ptr: *const u64) callconv(.c) u64;
-pub extern fn jent_atomic_store_u64(ptr: *u64, val: u64) callconv(.c) void;
-pub extern fn jent_atomic_load_ptr(ptr: *const ?*anyopaque) callconv(.c) ?*anyopaque;
-pub extern fn jent_atomic_store_ptr(ptr: *?*anyopaque, val: ?*anyopaque) callconv(.c) void;
-pub extern fn jent_atomic_cas_ptr(ptr: *?*anyopaque, old: ?*anyopaque, val: ?*anyopaque) callconv(.c) ?*anyopaque;
-pub extern fn jent_atomic_load_fips_cb(ptr: *const jent_fips_failure_cb) callconv(.c) jent_fips_failure_cb;
-pub extern fn jent_atomic_store_fips_cb(ptr: *jent_fips_failure_cb, val: jent_fips_failure_cb) callconv(.c) void;
+pub const jent_atomic_load_int = bindings.jent_atomic_load_int;
+pub const jent_atomic_store_int = bindings.jent_atomic_store_int;
+pub const jent_atomic_exchange_int = bindings.jent_atomic_exchange_int;
+pub const jent_atomic_load_u32 = bindings.jent_atomic_load_u32;
+pub const jent_atomic_inc_u32 = bindings.jent_atomic_inc_u32;
+pub const jent_atomic_cmpxchg_u32 = bindings.jent_atomic_cmpxchg_u32;
+pub const jent_atomic_store_u32 = bindings.jent_atomic_store_u32;
+pub const jent_atomic_load_ptr = bindings.jent_atomic_load_ptr;
+pub const jent_atomic_store_ptr = bindings.jent_atomic_store_ptr;
+pub const jent_atomic_cas_ptr = bindings.jent_atomic_cas_ptr;
+pub const jent_atomic_load_fips_cb = bindings.jent_atomic_load_fips_cb;
+pub const jent_atomic_store_fips_cb = bindings.jent_atomic_store_fips_cb;
 
-pub extern fn jent_cache_size_roundup(all_caches: c_int) callconv(.c) u64;
-pub extern fn jent_fips_enabled() callconv(.c) c_int;
-pub extern fn jent_fi_real_fips_enabled() callconv(.c) c_int;
+pub const jent_cache_size_roundup = bindings.jent_cache_size_roundup;
+pub const jent_fips_enabled = bindings.jent_fips_enabled;
+pub const jent_fi_real_fips_enabled = bindings.jent_fi_real_fips_enabled;
 
-pub extern fn jent_memset_secure(s: ?*anyopaque, n: usize) callconv(.c) void;
-pub extern fn jent_zalloc(len: usize, flags: c_uint) callconv(.c) ?*anyopaque;
-pub extern fn jent_zalloc_unlocked(len: usize) callconv(.c) ?*anyopaque;
-pub extern fn jent_zfree(ptr: ?*anyopaque, len: usize) callconv(.c) void;
-pub extern fn jent_memory_is_secure(flags: c_uint) callconv(.c) c_int;
-pub extern fn jent_memory_backend_name() callconv(.c) [*:0]const u8;
+pub const jent_memset_secure = bindings.jent_memset_secure;
+pub const jent_zalloc = bindings.jent_zalloc;
+pub const jent_zalloc_unlocked = bindings.jent_zalloc_unlocked;
+pub const jent_zfree = bindings.jent_zfree;
+pub const jent_memory_is_secure = bindings.jent_memory_is_secure;
+pub const jent_memory_backend_name = bindings.jent_memory_backend_name;
 
-pub extern fn jent_ncpu() callconv(.c) c_long;
-pub extern fn jent_cpu_highest() callconv(.c) c_long;
-pub extern fn jent_thread_pin_to_cpu(cpu: c_ulong) callconv(.c) c_int;
-pub extern fn jent_notime_thread_create(ctx: *jent_notime_ctx, routine: jent_notime_start_routine, arg: ?*anyopaque) callconv(.c) c_int;
-pub extern fn jent_notime_thread_join(ctx: *jent_notime_ctx) callconv(.c) void;
+pub const jent_ncpu = bindings.jent_ncpu;
+pub const jent_cpu_highest = bindings.jent_cpu_highest;
+pub const jent_thread_pin_to_cpu = bindings.jent_thread_pin_to_cpu;
+pub const jent_notime_thread_create = bindings.jent_notime_thread_create;
+pub const jent_notime_thread_join = bindings.jent_notime_thread_join;
 
-pub extern fn jent_os_random_bytes(buf: [*]u8, len: usize) callconv(.c) c_int;
-pub extern fn jent_os_random_supported() callconv(.c) c_int;
+pub const jent_os_random_bytes = bindings.jent_os_random_bytes;
+pub const jent_os_random_supported = bindings.jent_os_random_supported;
 
-pub extern fn jent_yield() callconv(.c) void;
-pub extern fn jent_get_nstime(out: *u64) callconv(.c) void;
-pub extern fn jent_set_mock_timer(cb: jent_mock_timer_cb, arg: ?*anyopaque) callconv(.c) c_int;
+pub const jent_yield = bindings.jent_yield;
+pub const jent_get_nstime = bindings.jent_get_nstime;
+pub const jent_set_mock_timer = bindings.jent_set_mock_timer;
 
 // ============================================================================
 // Unit Tests: Constants, Inline Helpers, and C-ABI Struct & Bitfield Layout
@@ -885,7 +1127,7 @@ test "C-ABI layout of jent_notime_thread and jent_notime_ctx matches C" {
 test "layout and bitfields of jent_sha_ctx" {
     const testing = std.testing;
 
-    try testing.expectEqual(@as(usize, 8), @alignOf(jent_sha_ctx));
+    try testing.expectEqual(@as(usize, @alignOf(u64)), @alignOf(jent_sha_ctx));
     try testing.expectEqual(@as(usize, 0), @offsetOf(jent_sha_ctx, "state"));
     try testing.expect(@offsetOf(jent_sha_ctx, "msg_len") >= 25 * @sizeOf(u64));
     try testing.expect(@offsetOf(jent_sha_ctx, "partial") > @offsetOf(jent_sha_ctx, "msg_len"));
@@ -908,7 +1150,7 @@ test "layout and bitfields of jent_sha_ctx" {
 test "layout and bitfields of rand_data" {
     const testing = std.testing;
 
-    try testing.expectEqual(@as(usize, 8), @alignOf(rand_data));
+    try testing.expectEqual(@as(usize, @alignOf(u64)), @alignOf(rand_data));
     try testing.expectEqual(@as(usize, 0), @offsetOf(rand_data, "hash_state"));
     try testing.expect(@offsetOf(rand_data, "prev_time") >= @sizeOf(jent_sha_ctx));
     try testing.expect(@offsetOf(rand_data, "lag_scoreboard") > @offsetOf(rand_data, "lag_delta_history"));

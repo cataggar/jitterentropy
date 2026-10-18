@@ -18,9 +18,9 @@ const JE_TAG = "jitterentropy-efi: ";
 const JE_SAMPLE_BYTES: usize = 32;
 const JE_STATUS_BUF_BYTES: usize = 4096;
 
-const JENT_FORCE_INTERNAL_TIMER: c_uint = 1 << 2;
-const JENT_FORCE_FIPS: c_uint = 1 << 4;
-const JENT_NTG1: c_uint = 1 << 7;
+const JENT_FORCE_INTERNAL_TIMER: c_uint = 1 << 3;
+const JENT_FORCE_FIPS: c_uint = 1 << 5;
+const JENT_NTG1: c_uint = 1 << 6;
 
 pub const rand_data = opaque {};
 
@@ -469,5 +469,5 @@ fn finish(system_table: *uefi.tables.SystemTable, status: uefi.Status) usize {
 
     system_table.runtime_services._resetSystem(.shutdown, status, 0, null);
 
-    return @backingInt(status);
+    return @as(*const usize, @ptrCast(&status)).*;
 }

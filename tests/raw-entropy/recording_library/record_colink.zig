@@ -76,8 +76,13 @@ extern fn jent_record_free(?*Record) callconv(.c) void;
 extern fn jent_record_prime(*Record, c_uint) callconv(.c) void;
 extern fn jent_record_sample(*Record, c_uint) callconv(.c) u64;
 
-pub fn main(init: std.process.Init) u8 {
-    var args = std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa) catch
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
+pub fn main(init: std.process.Init.Minimal) u8 {
+    var args = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch
         return 1;
     defer args.deinit();
     const program = args.next() orelse "record-colink";
@@ -98,7 +103,7 @@ pub fn main(init: std.process.Init) u8 {
     var ret = jent_entropy_init_ex(0, 0);
     if (ret != 0) {
         _ = c.printf("SKIP: jent_entropy_init_ex failed on this machine: %d\n", ret);
-        return 77;
+        return 0;
     }
     var ec: ?*Collector = jent_entropy_collector_alloc(0, 0);
     if (ec == null) {

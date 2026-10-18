@@ -86,7 +86,7 @@ fn hasLibcGetrandom() bool {
     if (builtin.target.isGnuLibC()) {
         return builtin.os.version_range.linux.glibc.order(.{ .major = 2, .minor = 25, .patch = 0 }) != .lt;
     }
-    if (builtin.target.isAndroid()) {
+    if (builtin.target.abi.isAndroid()) {
         return builtin.os.version_range.linux.android >= 28;
     }
     return true;

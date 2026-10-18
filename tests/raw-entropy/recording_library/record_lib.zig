@@ -4,6 +4,12 @@ const core = @import("jent");
 const record_options = @import("record_options");
 const internal = core.internal;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const c = struct {
     const FILE = opaque {};
 
@@ -82,11 +88,8 @@ extern fn __error() callconv(.c) *c_int;
 extern fn _errno() callconv(.c) *c_int;
 
 fn errnoPtr() *c_int {
-    return switch (builtin.os.tag) {
-        .windows => _errno(),
-        .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .netbsd, .openbsd, .dragonfly => __error(),
-        else => __errno_location(),
-    };
+    if (builtin.os.tag == .dragonfly) return __error();
+    return std.c._errno();
 }
 
 const core_api = struct {

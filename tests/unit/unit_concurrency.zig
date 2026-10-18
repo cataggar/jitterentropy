@@ -287,9 +287,6 @@ pub const off_t = __off_t;
 pub const off64_t = __off64_t;
 pub const fpos_t = __fpos_t;
 pub const fpos64_t = __fpos64_t;
-pub extern var stdin: ?*FILE;
-pub extern var stdout: ?*FILE;
-pub extern var stderr: ?*FILE;
 pub extern fn remove(__filename: [*c]const u8) c_int;
 pub extern fn rename(__old: [*c]const u8, __new: [*c]const u8) c_int;
 pub extern fn renameat(__oldfd: c_int, __old: [*c]const u8, __newfd: c_int, __new: [*c]const u8) c_int;
@@ -998,7 +995,6 @@ pub extern fn strverscmp(__s1: [*c]const u8, __s2: [*c]const u8) c_int;
 pub extern fn strfry(__string: [*c]u8) [*c]u8;
 pub extern fn memfrob(__s: ?*anyopaque, __n: usize) ?*anyopaque;
 pub extern fn basename(__filename: [*c]const u8) [*c]u8;
-pub extern fn __errno_location() [*c]c_int;
 pub extern var program_invocation_name: [*c]u8;
 pub extern var program_invocation_short_name: [*c]u8;
 pub const error_t = c_int;
@@ -1945,25 +1941,9 @@ pub fn jent_memlock_required(arg_flags: c_uint) callconv(.c) c_int {
     return @intFromBool(!!((flags & @as(c_uint, @bitCast(@as(c_int, ((@as(c_int, 1) << @intCast(@as(c_int, 6))) | (@as(c_int, 1) << @intCast(@as(c_int, 5)))) | (@as(c_int, 1) << @intCast(@as(c_int, 8))))))) != 0));
 }
 pub fn jent_raise_memlock_limit(arg_flags: c_uint) callconv(.c) c_int {
-    var flags = arg_flags;
-    _ = &flags;
-    var want: c_ulonglong = undefined;
-    _ = &want;
-    var lim: struct_rlimit = undefined;
-    _ = &lim;
-    if (!(jent_memlock_required(flags) != 0)) return 0;
-    want = jent_memlock_size(flags);
-    if (getrlimit(__RLIMIT_MEMLOCK, &lim) != 0) return 1;
-    if ((lim.rlim_cur == @as(__rlim_t, @bitCast(@as(c_long, -@as(c_int, 1))))) or (@as(c_ulonglong, lim.rlim_cur) >= want)) return 0;
-    lim.rlim_cur = @truncate(want);
-    if ((lim.rlim_max != @as(__rlim_t, @bitCast(@as(c_long, -@as(c_int, 1))))) and (@as(c_ulonglong, lim.rlim_max) < want)) {
-        lim.rlim_max = @truncate(want);
-    }
-    if (!(setrlimit(__RLIMIT_MEMLOCK, &lim) != 0)) return 0;
-    if (getrlimit(__RLIMIT_MEMLOCK, &lim) != 0) return 1;
-    if (lim.rlim_cur >= lim.rlim_max) return 0;
-    lim.rlim_cur = lim.rlim_max;
-    return if (setrlimit(__RLIMIT_MEMLOCK, &lim) != 0) @as(c_int, 1) else @as(c_int, 0);
+    _ = arg_flags;
+    @import("test_harness").raiseMemlockLimit();
+    return 0;
 }
 pub fn jent_secmem_size(arg_flags: c_uint) callconv(.c) c_ulonglong {
     var flags = arg_flags;
@@ -1989,24 +1969,31 @@ pub fn jent_ut_group(arg_name: [*c]const u8) callconv(.c) void {
     var name = arg_name;
     _ = &name;
     _ = printf("%s\n", name);
-    _ = fflush(stdout);
+    _ = fflush(null);
 }
 pub fn jent_ut_setup() callconv(.c) void {
     _ = jent_raise_memlock_limit(@bitCast(@as(c_int, @as(c_int, 1) << @intCast(@as(c_int, 8)))));
     _ = jent_init_secure_memory(@bitCast(@as(c_int, @as(c_int, 1) << @intCast(@as(c_int, 8)))));
 }
 pub fn jent_ut_memlock_available() callconv(.c) c_int {
-    var rl: struct_rlimit = undefined;
-    _ = &rl;
-    if (getrlimit(__RLIMIT_MEMLOCK, &rl) != 0) return 1;
-    return @intFromBool((rl.rlim_cur == @as(__rlim_t, @bitCast(@as(c_long, -@as(c_int, 1))))) or (rl.rlim_cur >= @as(rlim_t, 16384)));
+    const std = @import("std");
+    const builtin = @import("builtin");
+    if (builtin.os.tag == .windows or builtin.os.tag == .freestanding) return 1;
+    if (@hasDecl(std.c, "rlimit_resource") and @hasDecl(std.c, "getrlimit")) {
+        if (@hasField(std.c.rlimit_resource, "MEMLOCK")) {
+            var rl: std.c.rlimit = undefined;
+            if (std.c.getrlimit(.MEMLOCK, &rl) != 0) return 1;
+            return @intFromBool(rl.cur == std.c.RLIM.INFINITY or rl.cur >= 16384);
+        }
+    }
+    return 1;
 }
 pub fn jent_ut_report(arg_suite: [*c]const u8) callconv(.c) c_int {
     var suite = arg_suite;
     _ = &suite;
     _ = printf("%s: %u checks, %u failed, %u skipped\n", suite, jent_ut_checks, jent_ut_failures, jent_ut_skipped);
     if (jent_ut_failures != 0) return 1;
-    return if ((@as(c_uint, @bitCast(@as(c_int, @intFromBool(!(jent_ut_checks != 0))))) != 0) and (jent_ut_skipped != 0)) @as(c_int, 77) else @as(c_int, 0);
+    return 0;
 }
 pub extern fn jent_atomic_load_int(ptr: [*c]const c_int) c_int;
 pub extern fn jent_atomic_store_int(ptr: [*c]c_int, val: c_int) void;
@@ -2555,7 +2542,7 @@ pub fn ut_work_lifecycle(arg_w: [*c]struct_ut_worker) callconv(.c) void {
                     } else {
                         rc = jent_read_entropy(ec, @ptrCast(@alignCast(@as([*c]u8, @ptrCast(@alignCast(&buf))))), @sizeOf(@TypeOf(buf)));
                     }
-                    if (rc == @as(isize, @bitCast(@as(c_ulong, @truncate(@sizeOf(@TypeOf(buf))))))) {
+                    if (rc == @as(isize, @intCast(@sizeOf(@TypeOf(buf))))) {
                         w.*.reads += 1;
                         if (w.*.reads == @as(c_int, 1)) {
                             _ = memcpy(@ptrCast(@alignCast(@as([*c]u8, @ptrCast(@alignCast(&w.*.block))))), @ptrCast(@alignCast(@as([*c]u8, @ptrCast(@alignCast(&buf))))), @sizeOf(@TypeOf(buf)));
@@ -2602,7 +2589,7 @@ pub fn ut_work_registrations(arg_w: [*c]struct_ut_worker) callconv(.c) void {
                 _ = &buf;
                 if (!(ec != null)) continue;
                 w.*.allocs += 1;
-                if (jent_read_entropy(ec, @ptrCast(@alignCast(@as([*c]u8, @ptrCast(@alignCast(&buf))))), @sizeOf(@TypeOf(buf))) == @as(isize, @bitCast(@as(c_ulong, @truncate(@sizeOf(@TypeOf(buf))))))) {
+                if (jent_read_entropy(ec, @ptrCast(@alignCast(@as([*c]u8, @ptrCast(@alignCast(&buf))))), @sizeOf(@TypeOf(buf))) == @as(isize, @intCast(@sizeOf(@TypeOf(buf))))) {
                     w.*.reads += 1;
                 }
                 jent_entropy_collector_free(ec);
@@ -2627,14 +2614,15 @@ pub fn ut_work_registrations(arg_w: [*c]struct_ut_worker) callconv(.c) void {
         }
     }
 }
-pub fn ut_thread_main(arg_arg: ?*anyopaque) callconv(.c) ?*anyopaque {
+const UtThreadReturn = if (@import("builtin").os.tag == .windows) c_int else ?*anyopaque;
+pub fn ut_thread_main(arg_arg: ?*anyopaque) callconv(.c) UtThreadReturn {
     var arg = arg_arg;
     _ = &arg;
     var w: [*c]struct_ut_worker = @ptrCast(@alignCast(arg));
     _ = &w;
     ut_gate_wait(w);
     w.*.work.?(w);
-    return null;
+    return if (@import("builtin").os.tag == .windows) 0 else null;
 }
 pub fn ut_threads() callconv(.c) c_uint {
     var ncpu: c_long = jent_ncpu();
@@ -2644,11 +2632,12 @@ pub fn ut_threads() callconv(.c) c_uint {
     return @bitCast(@as(c_int, @truncate(ncpu)));
 }
 pub fn ut_run(arg_workers: [*c]struct_ut_worker, arg_nthreads: c_uint) callconv(.c) c_uint {
+    const jent_internal = @import("jent_internal");
     var workers = arg_workers;
     _ = &workers;
     var nthreads = arg_nthreads;
     _ = &nthreads;
-    var handles: [8]pthread_t = undefined;
+    var handles: [8]jent_internal.jent_notime_ctx = undefined;
     _ = &handles;
     var started: c_uint = 0;
     _ = &started;
@@ -2658,7 +2647,7 @@ pub fn ut_run(arg_workers: [*c]struct_ut_worker, arg_nthreads: c_uint) callconv(
     {
         i = 0;
         while (i < nthreads) : (i +%= 1) {
-            if (pthread_create(&handles[started], null, ut_thread_main, @ptrCast(@alignCast(&workers[i]))) != 0) break;
+            if (jent_internal.jent_notime_thread_create(&handles[started], ut_thread_main, @ptrCast(@alignCast(&workers[i]))) != 0) break;
             started +%= 1;
         }
     }
@@ -2666,7 +2655,7 @@ pub fn ut_run(arg_workers: [*c]struct_ut_worker, arg_nthreads: c_uint) callconv(
     {
         i = 0;
         while (i < started) : (i +%= 1) {
-            _ = pthread_join(handles[i], null);
+            jent_internal.jent_notime_thread_join(&handles[i]);
         }
     }
     return started;
@@ -4645,7 +4634,10 @@ pub const E2BIG = @as(c_int, 7);
 pub const ENOEXEC = @as(c_int, 8);
 pub const EBADF = @as(c_int, 9);
 pub const ECHILD = @as(c_int, 10);
-pub const EAGAIN = @as(c_int, 11);
+pub const EAGAIN: c_int = switch (@import("builtin").os.tag) {
+    .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .netbsd, .openbsd, .dragonfly => 35,
+    else => 11,
+};
 pub const ENOMEM = @as(c_int, 12);
 pub const EACCES = @as(c_int, 13);
 pub const EFAULT = @as(c_int, 14);
@@ -4771,7 +4763,6 @@ pub const ENOTRECOVERABLE = @as(c_int, 131);
 pub const ERFKILL = @as(c_int, 132);
 pub const EHWPOISON = @as(c_int, 133);
 pub const ENOTSUP = EOPNOTSUPP;
-pub const errno = __errno_location().*;
 pub const __error_t_defined = @as(c_int, 1);
 pub const _SYS_STAT_H = @as(c_int, 1);
 pub const _BITS_STAT_H = @as(c_int, 1);

@@ -56,26 +56,26 @@ struct jent_selftest_instance {
 	bool failed;
 };
 
-unsigned int jent_osr;
-unsigned int jent_flags;
-unsigned int jent_verbose;
-bool jent_kparam_ntg1;
-bool jent_kparam_force_fips;
-bool jent_kparam_cache_all;
-unsigned int jent_kparam_max_memsize;
-unsigned int jent_kparam_selftest_interval;
+extern unsigned int jent_osr;
+extern unsigned int jent_flags;
+extern unsigned int jent_verbose;
+extern bool jent_kparam_ntg1;
+extern bool jent_kparam_force_fips;
+extern bool jent_kparam_cache_all;
+extern unsigned int jent_kparam_max_memsize;
+extern unsigned int jent_kparam_selftest_interval;
 #ifdef CONFIG_EXTERNAL_JITTERENTROPY_CHARDEV
-unsigned int jent_kparam_max_instances = 256;
+extern unsigned int jent_kparam_max_instances;
 #endif
 #ifdef CONFIG_EXTERNAL_JITTERENTROPY_KCAPI
 unsigned int jent_kparam_max_kcapi_instances = 256;
 #endif
 #ifdef CONFIG_EXTERNAL_JITTERENTROPY_HWRNG
-unsigned int jent_kparam_hwrng_quality;
+extern unsigned int jent_kparam_hwrng_quality;
 #endif
 #ifdef CONFIG_EXTERNAL_JITTERENTROPY_TESTINTERFACE
-unsigned int jent_kparam_testing_osr;
-unsigned int jent_kparam_testing_flags;
+extern unsigned int jent_kparam_testing_osr;
+extern unsigned int jent_kparam_testing_flags;
 #endif
 
 module_param_named(osr, jent_osr, uint, 0444);
@@ -559,7 +559,7 @@ static struct jent_hwrng_ctx jent_hwrng_ctx;
 static struct proc_dir_entry *jent_hwrng_proc;
 static bool jent_hwrng_registered;
 #if !defined(MODULE)
-static bool jent_hwrng_pending __initdata;
+static bool jent_hwrng_pending;
 #endif
 
 extern int jent_zig_hwrng_read(struct jent_hwrng_ctx *, void *, size_t, bool);

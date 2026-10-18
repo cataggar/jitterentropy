@@ -3,6 +3,14 @@ const builtin = @import("builtin");
 const tool_options = @import("tool_options");
 const options = @import("options.zig");
 
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+pub const std_options: std.Options = .{
+    .enable_segfault_handler = false,
+    .signal_stack_size = null,
+    .unexpected_error_tracing = false,
+    .allow_stack_tracing = false,
+};
+
 const c = struct {
     extern fn fprintf(stream: *anyopaque, format: [*:0]const u8, ...) callconv(.c) c_int;
     extern fn fputs(text: [*:0]const u8, stream: *anyopaque) callconv(.c) c_int;
@@ -63,8 +71,13 @@ fn parseCount(text: [:0]const u8, what: [*:0]const u8) ?c_ulong {
     return value;
 }
 
-pub fn main(init: std.process.Init) u8 {
-    var args = std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa) catch
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
+pub fn main(init: std.process.Init.Minimal) u8 {
+    var args = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch
         return 1;
     defer args.deinit();
     const program = args.next() orelse "jitterentropy-hashtime";

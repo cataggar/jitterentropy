@@ -86,11 +86,11 @@ fn realGetNstime(out: *u64) void {
         .sparc64 => out.* = readSparc64Tick(),
         .loongarch64 => out.* = readLoongArch64Time(),
         else => {
-            if (os == .freestanding or os == .uefi) {
+            if (comptime (os == .freestanding or os == .uefi)) {
                 out.* = 0;
-            } else if (os == .windows) {
+            } else if (comptime (os == .windows)) {
                 out.* = windowsPerformanceCounter();
-            } else if (isDarwin(os)) {
+            } else if (comptime isDarwin(os)) {
                 out.* = mach_absolute_time();
             } else {
                 out.* = posixMonotonicTime();

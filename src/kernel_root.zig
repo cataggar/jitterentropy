@@ -1,5 +1,10 @@
 const std = @import("std");
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+
+pub const panic = std.debug.FullPanic(trapPanic);
 pub const is_linux_kernel = true;
 
 const arch_atomic = @import("arch/atomic.zig");

@@ -18,6 +18,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const JENT_STATUS_MAX_LEN: u32 = 4096;
 const JENT_UUID_IOCTL_LEN: usize = 37;
 const JENT_IOC_MAGIC: u8 = 'J';
@@ -207,7 +212,7 @@ fn get_status(fd: c_int) ?[:0]u8 {
     var status = jent_status_ioctl{ .buf = 0, .length = 0 };
 
     if (callIoctl(fd, JENT_IOCSTATUS, &status) == 0 or
-        __errno_location().* != @backingInt(linux.E.OVERFLOW))
+        __errno_location().* != 75)
     {
         perror("JENT_IOCSTATUS (probe)");
         return null;
@@ -280,7 +285,7 @@ pub export fn main(argc: c_int, argv: [*]const [*:0]const u8) callconv(.c) c_int
                 "JENT_IOCUUID: {s}, but the status document has \"{s}\"",
                 .{ std.mem.span(strerror(err)), json_uuid_opt.? },
             );
-        } else if (err != @backingInt(linux.E.NODATA)) {
+        } else if (err != 61) {
             failMsg(
                 "JENT_IOCUUID on an instance with no UUID: expected ENODATA, got {s}",
                 .{std.mem.span(strerror(err))},
@@ -427,7 +432,7 @@ pub export fn main(argc: c_int, argv: [*]const [*:0]const u8) callconv(.c) c_int
     // CAP_SYS_ADMIN and is refused to one without it.
     if (geteuid() != 0) {
         if (callIoctlNoArg(fd, JENT_IOCSELFTEST) != -1 or
-            __errno_location().* != @backingInt(linux.E.PERM))
+            __errno_location().* != 1)
         {
             failMsg("JENT_IOCSELFTEST: not refused with EPERM although unprivileged", .{});
         } else {
@@ -441,7 +446,7 @@ pub export fn main(argc: c_int, argv: [*]const [*:0]const u8) callconv(.c) c_int
 
     // An unimplemented command of the same magic must be rejected.
     if (callIoctl(fd, JENT_IOC_UNIMPLEMENTED, &val) != -1 or
-        __errno_location().* != @backingInt(linux.E.NOTTY))
+        __errno_location().* != 25)
     {
         failMsg("an unimplemented ioctl was not rejected with ENOTTY", .{});
     }

@@ -6,6 +6,11 @@ const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
 
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
 const RAWENTROPY_SAMPLES: usize = 1001;
 const DEBUGFS_INTERFACE: [:0]const u8 = "/sys/kernel/debug/jitter_rng/jent_raw_hires";
 const SYSFS_PARAM_DIR: [:0]const u8 = "/sys/module/jitter_rng/parameters";
@@ -45,8 +50,8 @@ const lrngval_t = u64;
 const DATASIZE: usize = @sizeOf(lrngval_t);
 const BUFFER_SIZE: usize = RAWENTROPY_SAMPLES * DATASIZE;
 
-const EINVAL: c_int = @backingInt(linux.E.INVAL);
-const EIO: c_int = @backingInt(linux.E.IO);
+const EINVAL: c_int = 22;
+const EIO: c_int = 5;
 
 const IoctlRequest = if (builtin.abi.isGnu()) c_ulong else c_int;
 

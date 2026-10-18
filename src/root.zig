@@ -1,5 +1,11 @@
 const std = @import("std");
 pub const internal = @import("internal.zig");
+
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+
+pub const panic = std.debug.FullPanic(trapPanic);
 pub const build_options = internal.build_options;
 pub const arch_atomic = @import("arch/atomic.zig");
 pub const arch_cache = @import("arch/cache.zig");
@@ -53,7 +59,6 @@ fn isPublicApiSymbol(comptime name: []const u8) bool {
 }
 
 fn symbolLinkage(comptime name: []const u8) std.builtin.GlobalLinkage {
-    if (std.mem.eql(u8, name, "jent_random_data")) return .weak;
     if (build_options.weak_internals and !(isPublicApiSymbol(name) and build_options.export_public_api)) return .weak;
     return .strong;
 }
@@ -118,6 +123,8 @@ fn exportNamespaceFunctions(comptime namespace: type) void {
         }
         if (isExportedVariable(name)) continue;
         if (std.mem.eql(u8, name, "jent_random_data") and !build_options.export_random_data) continue;
+        const is_public = isPublicApiSymbol(name) and build_options.export_public_api;
+        if (!is_public and !build_options.export_internals) continue;
         const value = @field(namespace, name);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         @export(&value, .{
@@ -129,6 +136,7 @@ fn exportNamespaceFunctions(comptime namespace: type) void {
 }
 
 fn exportVariable(comptime name: []const u8, comptime variable: anytype) void {
+    if (!build_options.export_internals) return;
     @export(variable, .{
         .name = name,
         .linkage = if (build_options.weak_internals) .weak else .strong,

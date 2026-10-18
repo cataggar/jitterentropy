@@ -8,20 +8,29 @@ const internal = @import("../internal.zig");
 const root = @import("root");
 const is_linux_kernel = @hasDecl(root, "is_linux_kernel") and root.is_linux_kernel;
 const external_crypto = build_options.external_crypto;
-const use_openssl = external_crypto == .openssl or external_crypto == .awslc;
+const use_openssl = external_crypto == .openssl;
+const use_awslc = external_crypto == .awslc;
 const use_libgcrypt = external_crypto == .libgcrypt;
-const use_windows = !use_openssl and !use_libgcrypt and builtin.os.tag == .windows;
-const use_posix = !use_openssl and !use_libgcrypt and switch (builtin.os.tag) {
+const use_windows = !use_openssl and !use_awslc and !use_libgcrypt and builtin.os.tag == .windows;
+const use_posix = !use_openssl and !use_awslc and !use_libgcrypt and switch (builtin.os.tag) {
     .linux, .macos, .freebsd, .netbsd, .openbsd, .dragonfly => true,
     else => false,
 };
 
+extern "c" fn CRYPTO_secure_malloc_init(sz: usize, minsize: usize) c_int;
+extern "c" fn CRYPTO_secure_malloc_done() c_int;
 extern "c" fn CRYPTO_secure_zalloc(
     length: usize,
     file: [*:0]const u8,
     line: c_int,
 ) ?*anyopaque;
 extern "c" fn CRYPTO_secure_clear_free(
+    ptr: ?*anyopaque,
+    length: usize,
+    file: [*:0]const u8,
+    line: c_int,
+) void;
+extern "c" fn CRYPTO_clear_free(
     ptr: ?*anyopaque,
     length: usize,
     file: [*:0]const u8,
@@ -34,6 +43,13 @@ extern "c" fn CRYPTO_zalloc(
     file: [*:0]const u8,
     line: c_int,
 ) ?*anyopaque;
+extern "c" fn ERR_set_mark() c_int;
+extern "c" fn ERR_pop_to_mark() c_int;
+extern "c" fn OPENSSL_malloc(size: usize) ?*anyopaque;
+extern "c" fn OPENSSL_free(ptr: ?*anyopaque) void;
+extern "c" fn gcry_check_version(req_version: ?[*:0]const u8) ?[*:0]const u8;
+extern "c" fn gcry_control(cmd: c_uint, ...) c_int;
+extern "c" fn gcry_is_secure(a: ?*const anyopaque) c_int;
 extern "c" fn gcry_calloc_secure(count: usize, length: usize) ?*anyopaque;
 extern "c" fn gcry_calloc(count: usize, length: usize) ?*anyopaque;
 extern "c" fn gcry_free(ptr: ?*anyopaque) void;
@@ -225,17 +241,54 @@ fn lockFailureIsTolerable(err: c_int) bool {
     return err == EPERM or err == ENOMEM or err == EAGAIN or err == ENOSYS;
 }
 
+pub fn jent_init_test_secure_memory() callconv(.c) void {
+    if (use_openssl) {
+        if (CRYPTO_secure_malloc_initialized() == 0) {
+            const ret = CRYPTO_secure_malloc_init(2 << 20, 32);
+            if (ret == 2) {
+                _ = CRYPTO_secure_malloc_done();
+            }
+        }
+    } else if (use_libgcrypt) {
+        const GCRYCTL_INITIALIZATION_FINISHED: c_uint = 19;
+        const GCRYCTL_INIT_SECMEM: c_uint = 24;
+        const GCRYCTL_SUSPEND_SECMEM_WARN: c_uint = 28;
+        const GCRYCTL_RESUME_SECMEM_WARN: c_uint = 29;
+        const GCRYCTL_INITIALIZATION_FINISHED_P: c_uint = 39;
+        if (gcry_control(GCRYCTL_INITIALIZATION_FINISHED_P, @as(c_int, 0)) == 0) {
+            if (gcry_check_version(null) != null) {
+                _ = gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+                _ = gcry_control(GCRYCTL_INIT_SECMEM, @as(usize, 2 << 20), @as(c_int, 0));
+                _ = gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+                _ = gcry_control(GCRYCTL_INITIALIZATION_FINISHED, @as(c_int, 0));
+            }
+        }
+    }
+}
+
 fn allocCommon(len: usize, flags: c_uint, secure: bool) ?*anyopaque {
+    if (len > std.math.maxInt(usize) / 2) return null;
     var result: ?*anyopaque = null;
 
     if (use_libgcrypt) {
-        if (secure) result = gcry_calloc_secure(1, len);
+        const GCRYCTL_INITIALIZATION_FINISHED_P: c_uint = 39;
+        if (secure and gcry_control(GCRYCTL_INITIALIZATION_FINISHED_P, @as(c_int, 0)) != 0) {
+            result = gcry_calloc_secure(1, len);
+            if (result != null and gcry_is_secure(result) == 0) {
+                gcry_free(result);
+                result = null;
+            }
+        }
         if (result == null and (!secure or (flags & internal.JENT_FORCE_SECURE_MEM) == 0)) {
             result = gcry_calloc(1, len);
         }
+    } else if (use_awslc) {
+        result = OPENSSL_malloc(len);
     } else if (use_openssl) {
         if (secure and CRYPTO_secure_malloc_initialized() != 0) {
+            _ = ERR_set_mark();
             result = CRYPTO_secure_zalloc(len, "src/arch/memory.zig", 0);
+            _ = ERR_pop_to_mark();
             if (result != null and CRYPTO_secure_allocated(result) == 0) {
                 CRYPTO_secure_clear_free(result, len, "src/arch/memory.zig", 0);
                 result = null;
@@ -359,9 +412,16 @@ pub fn jent_zfree(optional_ptr: ?*anyopaque, len: usize) callconv(.c) void {
     } else if (use_libgcrypt) {
         inspectBeforeRelease(ptr, len);
         gcry_free(ptr);
+    } else if (use_awslc) {
+        inspectBeforeRelease(ptr, len);
+        OPENSSL_free(ptr);
     } else if (use_openssl) {
         inspectBeforeRelease(ptr, len);
-        CRYPTO_secure_clear_free(ptr, len, "src/arch/memory.zig", 0);
+        if (CRYPTO_secure_allocated(ptr) != 0) {
+            CRYPTO_secure_clear_free(ptr, len, "src/arch/memory.zig", 0);
+        } else {
+            CRYPTO_clear_free(ptr, len, "src/arch/memory.zig", 0);
+        }
     } else if (use_windows) {
         const layout = roundedLayout(len) orelse return;
         const base = ptrSub(ptr, jent_pagesize());

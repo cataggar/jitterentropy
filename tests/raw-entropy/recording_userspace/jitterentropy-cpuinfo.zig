@@ -25,6 +25,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+pub const std_options_debug_threaded_io: ?*std.Io.Threaded = null;
+pub const std_options: std.Options = .{
+    .enable_segfault_handler = false,
+    .signal_stack_size = null,
+    .unexpected_error_tracing = false,
+    .allow_stack_tracing = false,
+};
+
 const Backend = enum {
     windows,
     linux,
@@ -58,14 +66,18 @@ pub const JENT_IDENT_LEN: usize = 160;
 pub const JENT_TYPE_LEN: usize = 16;
 
 const Errno = struct {
-    const NOENT: i32 = if (builtin.os.tag == .windows) 2 else @backingInt(std.posix.E.NOENT);
-    const IO: i32 = if (builtin.os.tag == .windows) 5 else @backingInt(std.posix.E.IO);
-    const AGAIN: i32 = if (builtin.os.tag == .windows) 11 else @backingInt(std.posix.E.AGAIN);
-    const NOMEM: i32 = if (builtin.os.tag == .windows) 12 else @backingInt(std.posix.E.NOMEM);
-    const FAULT: i32 = if (builtin.os.tag == .windows) 14 else @backingInt(std.posix.E.FAULT);
-    const INVAL: i32 = if (builtin.os.tag == .windows) 22 else @backingInt(std.posix.E.INVAL);
-    const NOSYS: i32 = if (builtin.os.tag == .windows) 40 else @backingInt(std.posix.E.NOSYS);
-    const NODATA: i32 = if (builtin.os.tag == .linux) @backingInt(std.posix.E.NODATA) else 61;
+    const NOENT: i32 = 2;
+    const IO: i32 = 5;
+    const AGAIN: i32 = if (builtin.os.tag == .linux or builtin.os.tag == .windows or builtin.os.tag == .illumos) 11 else 35;
+    const NOMEM: i32 = 12;
+    const FAULT: i32 = 14;
+    const INVAL: i32 = 22;
+    const NOSYS: i32 = switch (builtin.os.tag) {
+        .linux => 38,
+        .windows => 40,
+        else => 78,
+    };
+    const NODATA: i32 = 61;
 };
 
 const FILE = opaque {};
@@ -1708,8 +1720,8 @@ fn describeCurrentGeneric(info: *CpuInfo) void {
 fn getCpusGeneric(list: *CpuList) i32 {
     const sc_nprocessors_onln: c_int = switch (builtin.os.tag) {
         .freebsd, .dragonfly => 58,
-        .openbsd => 502,
-        .netbsd => 83,
+        .openbsd => 503,
+        .netbsd => 1002,
         .illumos => 15,
         .haiku => 35,
         else => 84,
@@ -2335,7 +2347,12 @@ const FdWriter = struct {
 
 var global_cpu_list: CpuList = .{};
 
-pub fn main(init: std.process.Init) u8 {
+fn trapPanic(_: []const u8, _: ?usize) noreturn {
+    @trap();
+}
+pub const panic = std.debug.FullPanic(trapPanic);
+
+pub fn main(init: std.process.Init.Minimal) u8 {
     var stdout_buf: [4096]u8 = undefined;
     var stderr_buf: [1024]u8 = undefined;
     var out_fd = FdWriter.init(1, &stdout_buf);
@@ -2347,7 +2364,7 @@ pub fn main(init: std.process.Init) u8 {
         stderr.flush() catch {};
     }
 
-    var args_it = std.process.Args.Iterator.initAllocator(init.minimal.args, init.gpa) catch return 1;
+    var args_it = std.process.Args.Iterator.initAllocator(init.args, std.heap.c_allocator) catch return 1;
     defer args_it.deinit();
     const prog_name = args_it.next() orelse "jitterentropy-cpuinfo";
 

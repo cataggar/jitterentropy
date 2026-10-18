@@ -38,14 +38,6 @@ pub fn jent_atomic_store_u32(ptr: *u32, val: u32) callconv(.c) void {
     @atomicStore(u32, ptr, val, .seq_cst);
 }
 
-pub fn jent_atomic_load_u64(ptr: *const u64) callconv(.c) u64 {
-    return @atomicLoad(u64, ptr, .seq_cst);
-}
-
-pub fn jent_atomic_store_u64(ptr: *u64, val: u64) callconv(.c) void {
-    @atomicStore(u64, ptr, val, .seq_cst);
-}
-
 pub fn jent_atomic_load_ptr(ptr: *const ?*anyopaque) callconv(.c) ?*anyopaque {
     const atomic_ptr: *const usize = @ptrCast(ptr);
     return intToPointer(@atomicLoad(usize, atomic_ptr, .seq_cst));
@@ -105,10 +97,6 @@ test "integer atomics" {
     try testing.expectEqual(@as(u32, 5), jent_atomic_cmpxchg_u32(&u32_value, 5, 6));
     try testing.expectEqual(@as(u32, 6), u32_value);
     try testing.expectEqual(@as(u32, 6), jent_atomic_cmpxchg_u32(&u32_value, 5, 7));
-
-    var u64_value: u64 = 8;
-    jent_atomic_store_u64(&u64_value, 9);
-    try testing.expectEqual(@as(u64, 9), jent_atomic_load_u64(&u64_value));
 }
 
 test "pointer atomics preserve null and compare-and-swap semantics" {
