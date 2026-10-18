@@ -489,16 +489,42 @@ pub fn RandData(comptime enable_internal_timer: bool) type {
             self.bitfields.notime_running = val;
         }
         pub inline fn getNotimeInterrupt(self: *const Self) u8 {
-            return @as(*const volatile u8, &self.notime_interrupt).*;
+            return @atomicLoad(u8, &self.notime_interrupt, .acquire);
         }
         pub inline fn setNotimeInterrupt(self: *Self, val: u8) void {
-            @as(*volatile u8, &self.notime_interrupt).* = val;
+            @atomicStore(u8, &self.notime_interrupt, val, .release);
         }
         pub inline fn getNotimeTimer(self: *const Self) u64 {
-            return @as(*const volatile u64, &self.notime_timer).*;
+            if (@sizeOf(usize) >= @sizeOf(u64)) {
+                return @atomicLoad(u64, &self.notime_timer, .acquire);
+            } else {
+                const halves: *const [2]u32 = @ptrCast(&self.notime_timer);
+                const w0 = @atomicLoad(u32, &halves[0], .acquire);
+                const w1 = @atomicLoad(u32, &halves[1], .acquire);
+                return switch (builtin.cpu.arch.endian()) {
+                    .little => @as(u64, w0) | (@as(u64, w1) << 32),
+                    .big => (@as(u64, w0) << 32) | @as(u64, w1),
+                };
+            }
         }
         pub inline fn setNotimeTimer(self: *Self, val: u64) void {
-            @as(*volatile u64, &self.notime_timer).* = val;
+            if (@sizeOf(usize) >= @sizeOf(u64)) {
+                @atomicStore(u64, &self.notime_timer, val, .release);
+            } else {
+                const halves: *[2]u32 = @ptrCast(&self.notime_timer);
+                const lo: u32 = @truncate(val);
+                const hi: u32 = @truncate(val >> 32);
+                switch (builtin.cpu.arch.endian()) {
+                    .little => {
+                        @atomicStore(u32, &halves[0], lo, .release);
+                        @atomicStore(u32, &halves[1], hi, .release);
+                    },
+                    .big => {
+                        @atomicStore(u32, &halves[0], hi, .release);
+                        @atomicStore(u32, &halves[1], lo, .release);
+                    },
+                }
+            }
         }
     } else extern struct {
         const Self = @This();
@@ -1205,6 +1231,13 @@ test "layout and bitfields of rand_data" {
         ec.setNotimeRunning(0);
         try testing.expectEqual(@as(u1, 0), ec.notimeRunning());
         try testing.expectEqual(@as(u8, 0xa5), ec.getNotimeInterrupt());
+
+        ec.setNotimeTimer(0x0123_4567_89ab_cdef);
+        try testing.expectEqual(@as(u64, 0x0123_4567_89ab_cdef), ec.getNotimeTimer());
+        ec.setNotimeTimer(0x0000_0001_0000_0000);
+        try testing.expectEqual(@as(u64, 0x0000_0001_0000_0000), ec.getNotimeTimer());
+        ec.setNotimeTimer(0);
+        try testing.expectEqual(@as(u64, 0), ec.getNotimeTimer());
     }
 
     try testing.expectEqual(@as(c_int, 0x13572468), ec.selftest_failed);
