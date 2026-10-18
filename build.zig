@@ -24,6 +24,7 @@ const unit_test_names: []const []const u8 = &.{
     "unit-notime",
     "unit-concurrency",
     "unit-zeroize",
+    "test-timer",
 };
 
 const mock_unit_test_names: []const []const u8 = &.{
@@ -1042,6 +1043,51 @@ pub fn build(b: *std.Build) void {
     });
     const run_zig_harness_tests = b.addRunArtifact(zig_harness_tests);
     test_step.dependOn(&run_zig_harness_tests.step);
+
+    const kmod_test_options = b.addOptions();
+    kmod_test_options.addOption(bool, "kcapi", true);
+    kmod_test_options.addOption(bool, "chardev", true);
+    kmod_test_options.addOption(bool, "hwrng", true);
+    kmod_test_options.addOption(bool, "testinterface", true);
+    kmod_test_options.addOption(bool, "builtin_jitterentropy", false);
+    const kmod_core_mod = createCModule(b, target, optimize, opts, null);
+    kmod_core_mod.root_source_file = b.path("linux_kernel/kmod_core.zig");
+    kmod_core_mod.addOptions("kmod_build_options", kmod_test_options);
+    const kmod_test_mod = createCModule(b, target, optimize, opts, null);
+    kmod_test_mod.root_source_file = b.path("tests/unit/test_kmod_core.zig");
+    kmod_test_mod.addImport("kmod_core", kmod_core_mod);
+    const zig_kmod_tests = b.addTest(.{
+        .name = "zig-kmod-tests",
+        .root_module = kmod_test_mod,
+    });
+    const run_zig_kmod_tests = b.addRunArtifact(zig_kmod_tests);
+    applyTestEnv(run_zig_kmod_tests, tsan_options);
+    test_step.dependOn(&run_zig_kmod_tests.step);
+
+    const abi_layout_test_mod = createCModule(b, target, optimize, opts, null);
+    abi_layout_test_mod.root_source_file = b.path("tests/unit/test_abi_layout.zig");
+    abi_layout_test_mod.addImport("jent", zig_test_mod);
+    const zig_abi_layout_tests = b.addTest(.{
+        .name = "zig-abi-layout-tests",
+        .root_module = abi_layout_test_mod,
+    });
+    const run_zig_abi_layout_tests = b.addRunArtifact(zig_abi_layout_tests);
+    applyTestEnv(run_zig_abi_layout_tests, tsan_options);
+    test_step.dependOn(&run_zig_abi_layout_tests.step);
+
+    const health_api_mod = createCModule(b, target, optimize, opts, null);
+    health_api_mod.root_source_file = b.path("src/health.zig");
+    health_api_mod.addOptions("build_options", internal_build_options);
+    const health_test_mod = createCModule(b, target, optimize, opts, null);
+    health_test_mod.root_source_file = b.path("tests/unit/test_health.zig");
+    health_test_mod.addImport("jent", health_api_mod);
+    const zig_health_tests = b.addTest(.{
+        .name = "zig-health-tests",
+        .root_module = health_test_mod,
+    });
+    const run_zig_health_tests = b.addRunArtifact(zig_health_tests);
+    applyTestEnv(run_zig_health_tests, tsan_options);
+    test_step.dependOn(&run_zig_health_tests.step);
 
     const cache_api_mod = createCModule(b, target, optimize, opts, null);
     cache_api_mod.root_source_file = b.path("src/arch/cache.zig");
