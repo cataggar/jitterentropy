@@ -43,8 +43,8 @@ fn jent_notime_init_flags(ctx: *?*anyopaque, flags: c_uint) c_int {
 
     const raw = internal.jent_zalloc(@sizeOf(jent_notime_ctx), flags) orelse return -ENOMEM;
     const thread_ctx: *jent_notime_ctx = @ptrCast(@alignCast(raw));
-    thread_ctx.notime_cpu = if (jent_notime_cpu_configured != 0)
-        jent_notime_cpu
+    thread_ctx.notime_cpu = if (@atomicLoad(c_int, &jent_notime_cpu_configured, .acquire) != 0)
+        @atomicLoad(c_ulong, &jent_notime_cpu, .acquire)
     else
         JENT_NOTIME_CPU_DEFAULT;
     ctx.* = raw;
@@ -95,8 +95,8 @@ pub fn jent_notime_set_cpu(cpu: c_ulong) callconv(.c) c_int {
     if (!internal.build_options.internal_timer) return -EOPNOTSUPP;
     if (internal.jent_atomic_load_int(&jent_notime_switch_blocked) != 0) return -EAGAIN;
 
-    jent_notime_cpu = cpu;
-    jent_notime_cpu_configured = 1;
+    @atomicStore(c_ulong, &jent_notime_cpu, cpu, .release);
+    @atomicStore(c_int, &jent_notime_cpu_configured, 1, .release);
     return 0;
 }
 
@@ -106,7 +106,7 @@ fn jent_notime_sample_timer_enabled(arg: ?*anyopaque) SampleReturn {
     const ec: *rand_data = @ptrCast(@alignCast(arg.?));
     const thread_ctx = ctxCast(ec.notime_thread_ctx);
 
-    if (thread_ctx != null and notime_thread == &jent_notime_thread_builtin) {
+    if (thread_ctx != null and @atomicLoad(?*jent_notime_thread, &notime_thread, .acquire) == &jent_notime_thread_builtin) {
         const cpu = thread_ctx.?.notime_cpu;
         if (cpu == JENT_NOTIME_CPU_DEFAULT) {
             const highest = internal.jent_cpu_highest();
@@ -135,7 +135,7 @@ pub fn jent_notime_sample_timer(arg: ?*anyopaque) callconv(.c) SampleReturn {
 }
 
 fn jent_notime_settick_enabled(ec: *rand_data) c_int {
-    const thread = notime_thread orelse return 0;
+    const thread = @atomicLoad(?*jent_notime_thread, &notime_thread, .acquire) orelse return 0;
     if (ec.enableNotime() == 0) return 0;
 
     ec.setNotimeInterrupt(0);
@@ -159,7 +159,7 @@ pub fn jent_notime_settick(ec: *rand_data) callconv(.c) c_int {
 }
 
 fn jent_notime_unsettick_enabled(ec: *rand_data) void {
-    const thread = notime_thread orelse return;
+    const thread = @atomicLoad(?*jent_notime_thread, &notime_thread, .acquire) orelse return;
     if (ec.enableNotime() == 0 or ec.notimeRunning() == 0) return;
 
     ec.setNotimeInterrupt(1);
@@ -212,7 +212,7 @@ pub fn jent_get_nstime_internal(ec: *rand_data, out: *u64) callconv(.c) void {
 }
 
 fn jent_notime_enable_thread(ec: *rand_data, flags: c_uint) c_int {
-    const thread = notime_thread orelse return 0;
+    const thread = @atomicLoad(?*jent_notime_thread, &notime_thread, .acquire) orelse return 0;
     const ret = if (thread == &jent_notime_thread_builtin)
         jent_notime_init_flags(&ec.notime_thread_ctx, flags)
     else
@@ -223,7 +223,7 @@ fn jent_notime_enable_thread(ec: *rand_data, flags: c_uint) c_int {
 }
 
 fn jent_notime_disable_enabled(ec: *rand_data) void {
-    if (notime_thread) |thread| {
+    if (@atomicLoad(?*jent_notime_thread, &notime_thread, .acquire)) |thread| {
         if (ec.notime_thread_ctx) |ctx| {
             thread.jent_notime_fini.?(ctx);
             ec.notime_thread_ctx = null;
@@ -276,10 +276,10 @@ pub fn jent_notime_switch(new_thread: ?*jent_notime_thread) callconv(.c) c_int {
     }
 
     if (thread == &jent_notime_thread_builtin) {
-        notime_thread = &jent_notime_thread_builtin;
+        @atomicStore(?*jent_notime_thread, &notime_thread, &jent_notime_thread_builtin, .release);
     } else {
         jent_notime_thread_external = thread.*;
-        notime_thread = &jent_notime_thread_external;
+        @atomicStore(?*jent_notime_thread, &notime_thread, &jent_notime_thread_external, .release);
     }
     return 0;
 }
@@ -293,4 +293,75 @@ pub fn jent_notime_force() callconv(.c) void {
 pub fn jent_notime_forced() callconv(.c) c_int {
     if (!internal.build_options.internal_timer) return 0;
     return internal.jent_atomic_load_int(&jent_force_internal_timer);
+}
+
+test "concurrent notime timer, interrupt, and CPU configuration atomics" {
+    const std = @import("std");
+    const testing = std.testing;
+
+    if (comptime !internal.build_options.internal_timer) return;
+
+    const saved_cpu = @atomicLoad(c_ulong, &jent_notime_cpu, .acquire);
+    const saved_configured = @atomicLoad(c_int, &jent_notime_cpu_configured, .acquire);
+    const saved_thread = @atomicLoad(?*jent_notime_thread, &notime_thread, .acquire);
+    const saved_blocked = internal.jent_atomic_load_int(&jent_notime_switch_blocked);
+    defer {
+        @atomicStore(c_ulong, &jent_notime_cpu, saved_cpu, .release);
+        @atomicStore(c_int, &jent_notime_cpu_configured, saved_configured, .release);
+        @atomicStore(?*jent_notime_thread, &notime_thread, saved_thread, .release);
+        internal.jent_atomic_store_int(&jent_notime_switch_blocked, saved_blocked);
+    }
+
+    internal.jent_atomic_store_int(&jent_notime_switch_blocked, 0);
+    @atomicStore(c_int, &jent_notime_cpu_configured, 0, .release);
+    @atomicStore(c_ulong, &jent_notime_cpu, 0, .release);
+
+    try testing.expectEqual(@as(c_int, 0), jent_notime_set_cpu(3));
+    try testing.expectEqual(@as(c_int, 1), @atomicLoad(c_int, &jent_notime_cpu_configured, .acquire));
+    try testing.expectEqual(@as(c_ulong, 3), @atomicLoad(c_ulong, &jent_notime_cpu, .acquire));
+
+    if (comptime internal.is_freestanding or builtin.single_threaded) return;
+
+    var ec: rand_data = .{};
+    ec.setNotimeInterrupt(0);
+    ec.setNotimeTimer(0);
+
+    const Worker = struct {
+        fn tickLoop(collector: *rand_data) void {
+            while (collector.getNotimeInterrupt() == 0) {
+                collector.setNotimeTimer(collector.getNotimeTimer() +% 1);
+            }
+        }
+
+        fn cpuConfigLoop(iterations: usize) void {
+            var i: usize = 0;
+            while (i < iterations) : (i += 1) {
+                _ = jent_notime_set_cpu(@intCast(i & 7));
+                _ = jent_notime_switch(&jent_notime_thread_builtin);
+                const configured = @atomicLoad(c_int, &jent_notime_cpu_configured, .acquire);
+                if (configured != 0) {
+                    const cpu = @atomicLoad(c_ulong, &jent_notime_cpu, .acquire);
+                    std.debug.assert(cpu < 8);
+                }
+                const impl = @atomicLoad(?*jent_notime_thread, &notime_thread, .acquire);
+                std.debug.assert(impl == &jent_notime_thread_builtin);
+            }
+        }
+    };
+
+    const tick_thread = try std.Thread.spawn(.{}, Worker.tickLoop, .{&ec});
+    while (jent_notime_read(&ec) < 64) {
+        internal.jent_yield();
+    }
+    const observed = jent_notime_read(&ec);
+    try testing.expect(observed >= 64);
+    ec.setNotimeInterrupt(1);
+    tick_thread.join();
+    try testing.expectEqual(@as(u8, 1), ec.getNotimeInterrupt());
+
+    const t1 = try std.Thread.spawn(.{}, Worker.cpuConfigLoop, .{256});
+    const t2 = try std.Thread.spawn(.{}, Worker.cpuConfigLoop, .{256});
+    t1.join();
+    t2.join();
+    try testing.expectEqual(@as(c_int, 1), @atomicLoad(c_int, &jent_notime_cpu_configured, .acquire));
 }
