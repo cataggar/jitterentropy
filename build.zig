@@ -53,6 +53,16 @@ const BuildOptions = struct {
     coverage_rt_file: ?std.Build.LazyPath,
 };
 
+fn configureBinaryHardening(
+    compile: *std.Build.Step.Compile,
+    target: std.Build.ResolvedTarget,
+) void {
+    if (target.result.ofmt == .elf and (compile.kind != .lib or compile.linkage == .dynamic)) {
+        compile.link_z_relro = true;
+        compile.link_z_lazy = false;
+    }
+}
+
 fn installLibrary(
     b: *std.Build,
     library: *std.Build.Step.Compile,
@@ -126,11 +136,15 @@ pub fn build(b: *std.Build) void {
         "Also build and install libjitterentropy-kernel and jitter_rng (Linux only, default: false)",
     ) orelse false;
 
-    const enable_rngd = b.option(
+    const enable_rngd = (b.option(
         bool,
         "rngd",
         "Also build and install jitterentropy-rngd (Linux only, default: false)",
-    ) orelse false;
+    ) orelse false) or (b.option(
+        bool,
+        "enable-rngd",
+        "Alias for -Drngd (Linux only, default: false)",
+    ) orelse false);
 
     const rngd_sbindir = b.option(
         []const u8,
@@ -392,6 +406,7 @@ pub fn build(b: *std.Build) void {
         .root_module = lib_mod,
         .use_llvm = true,
     });
+    configureBinaryHardening(lib, target);
     if (linkage == .dynamic) {
         if (os_tag.isDarwin()) {
             lib.install_name = b.fmt(
@@ -426,6 +441,8 @@ pub fn build(b: *std.Build) void {
     }
 
     const test_step = b.step("test", "Run jitterentropy test suite");
+    const test_unit_step = b.step("test-unit", "Run jitterentropy unit test suite");
+    test_unit_step.dependOn(test_step);
     const test_runner_exe = addTestRunnerExecutable(b, target);
     const tsan_options: ?[]const u8 = if (opts.tsan)
         "halt_on_error=1:suppressions=tests/tsan.supp"
@@ -468,6 +485,7 @@ pub fn build(b: *std.Build) void {
             .root_module = rec_mod,
             .use_llvm = true,
         });
+        configureBinaryHardening(rec_lib, target);
         if (linkage == .dynamic) {
             if (os_tag.isDarwin()) {
                 rec_lib.install_name = b.fmt(
@@ -514,6 +532,7 @@ pub fn build(b: *std.Build) void {
             .name = "record-colink",
             .root_module = colink_mod,
         });
+        configureBinaryHardening(colink_exe, target);
         const run_colink = addSkipAwareTestRun(b, test_runner_exe, colink_exe, tsan_options);
         test_step.dependOn(&run_colink.step);
     }
@@ -532,6 +551,7 @@ pub fn build(b: *std.Build) void {
             .root_module = kern_mod,
             .use_llvm = true,
         });
+        configureBinaryHardening(kern_lib, target);
         if (linkage == .dynamic) {
             kern_lib.setVersionScript(b.path("linux_kernel/userspace/kernel.lds"));
             addCheckExportsTest(b, test_step, kern_lib, "linux_kernel/userspace/kernel.lds");
@@ -555,6 +575,7 @@ pub fn build(b: *std.Build) void {
             .name = "jitter_rng",
             .root_module = jitter_rng_mod,
         });
+        configureBinaryHardening(jitter_rng_exe, target);
         b.installArtifact(jitter_rng_exe);
         b.installFile(
             "doc/jitterentropy-kernel.3",
@@ -580,6 +601,7 @@ pub fn build(b: *std.Build) void {
             .name = "jitterentropy-rngd",
             .root_module = rngd_mod,
         });
+        configureBinaryHardening(rngd_exe, target);
         const install_rngd = b.addInstallArtifact(rngd_exe, .{
             .dest_dir = .{ .override = .{ .custom = "sbin" } },
         });
@@ -626,6 +648,7 @@ pub fn build(b: *std.Build) void {
         .name = "gcd",
         .root_module = gcd_mod,
     });
+    configureBinaryHardening(gcd_exe, target);
 
     const health_mod = createCModule(b, target, optimize, opts, null);
     health_mod.root_source_file = b.path("tests/health/health.zig");
@@ -635,6 +658,7 @@ pub fn build(b: *std.Build) void {
         .name = "jitterentropy-health",
         .root_module = health_mod,
     });
+    configureBinaryHardening(health_exe, target);
 
     const flags_exe = addZigToolExecutable(
         b,
@@ -728,6 +752,7 @@ pub fn build(b: *std.Build) void {
             .name = "jitterentropy-hashtime",
             .root_module = hashtime_mod,
         });
+        configureBinaryHardening(hashtime_exe, target);
         b.installArtifact(hashtime_exe);
 
         const tool_manpages: []const []const u8 = &.{
@@ -749,6 +774,7 @@ pub fn build(b: *std.Build) void {
             .name = "jitterentropy-cpuinfo",
             .root_module = cpuinfo_mod,
         });
+        configureBinaryHardening(cpuinfo_exe, target);
         if (os_tag == .windows) {
             cpuinfo_exe.root_module.linkSystemLibrary("advapi32", .{ .use_pkg_config = .no });
         }
@@ -760,6 +786,7 @@ pub fn build(b: *std.Build) void {
             .name = "extractlsb",
             .root_module = extractlsb_mod,
         });
+        configureBinaryHardening(extractlsb_exe, target);
         b.installArtifact(extractlsb_exe);
 
         if (os_tag == .linux) {
@@ -769,6 +796,7 @@ pub fn build(b: *std.Build) void {
                 .name = "getrawentropy",
                 .root_module = getraw_mod,
             });
+            configureBinaryHardening(getraw_exe, target);
             b.installArtifact(getraw_exe);
 
             const status_mod = createCModule(b, target, optimize, opts, null);
@@ -777,6 +805,7 @@ pub fn build(b: *std.Build) void {
                 .name = "jitterentropy-chardev-status",
                 .root_module = status_mod,
             });
+            configureBinaryHardening(status_exe, target);
             b.installArtifact(status_exe);
 
             const fields_mod = createCModule(b, target, optimize, opts, null);
@@ -785,6 +814,7 @@ pub fn build(b: *std.Build) void {
                 .name = "jitterentropy-chardev-fields",
                 .root_module = fields_mod,
             });
+            configureBinaryHardening(fields_exe, target);
             b.installArtifact(fields_exe);
         }
     }
@@ -1529,10 +1559,12 @@ fn addZigToolExecutable(
         mod.linkLibrary(library);
         configureSystemLibraries(mod, target, opts);
     }
-    return b.addExecutable(.{
+    const exe = b.addExecutable(.{
         .name = name,
         .root_module = mod,
     });
+    configureBinaryHardening(exe, target);
+    return exe;
 }
 
 fn addUnitTestExecutable(

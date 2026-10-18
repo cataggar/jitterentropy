@@ -86,9 +86,14 @@ $(obj)/jitter_rng.o: private objtool-enabled :=
 # object freestanding: Linux headers and macro-only interfaces stay in the C
 # shim above.
 ifeq ($(ARCH),x86)
+ifeq ($(CONFIG_X86_32),y)
+jent_zig_target := x86-freestanding-none
+jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
+else
 jent_zig_target := x86_64-freestanding-none
 jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
 jent_zig_model := -mcmodel kernel
+endif
 else ifeq ($(ARCH),x86_64)
 jent_zig_target := x86_64-freestanding-none
 jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
