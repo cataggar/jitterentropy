@@ -161,24 +161,25 @@ jobs:
           #include <stdint.h>
           #include <stddef.h>
           #define JENT_SHA3_256_SIZE_DIGEST 32
+          #define JENT_XDRBG_SIZE_STATE 64
           #define JENT_SHA3_256_SIZE_BLOCK 136
           #define JENT_SHA3_MAX_SIZE_BLOCK JENT_SHA3_256_SIZE_BLOCK
           struct jent_sha_ctx {
               uint64_t state[25];
               size_t msg_len;
-              unsigned int r;
-              unsigned int rword;
-              unsigned int digestsize;
-              uint8_t initially_seeded;
-              uint8_t padding;
               uint8_t partial[JENT_SHA3_MAX_SIZE_BLOCK];
-              uint8_t xdrbg_block[JENT_SHA3_256_SIZE_DIGEST];
+              uint8_t xdrbg_block[JENT_XDRBG_SIZE_STATE + JENT_SHA3_256_SIZE_DIGEST];
+              uint8_t r;
+              uint8_t rword;
+              uint8_t digestsize;
+              uint8_t padding;
+              uint8_t initially_seeded:1;
           };
           #define HASH_CTX_ON_STACK(name) struct jent_sha_ctx name
           void jent_sha3_256_init(struct jent_sha_ctx *ctx);
           void jent_shake256_init(struct jent_sha_ctx *ctx);
-          static inline void jent_shake256_set_digestsize(struct jent_sha_ctx *ctx, size_t digestsize) {
-              ctx->digestsize = (unsigned int)digestsize;
+          static inline void jent_shake256_set_digestsize(struct jent_sha_ctx *ctx, unsigned int digestsize) {
+              ctx->digestsize = (uint8_t)digestsize;
           }
           void jent_sha3_update(struct jent_sha_ctx *ctx, const uint8_t *in, size_t inlen);
           void jent_sha3_final(struct jent_sha_ctx *ctx, uint8_t *digest);

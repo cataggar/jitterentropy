@@ -165,10 +165,14 @@ in
 
         kernel_log = machine.succeed("dmesg")
         # Strip the timestamp prefix and undo dmesg's escaping of the
-        # tab indentation.
+        # tab indentation; ignore periodic selftest lines that may
+        # interleave from the background workqueue on another vCPU.
         msgs = [
-            re.sub(r"^\[[^\]]*\] ?", "", line).replace("\\x09", "\t")
-            for line in kernel_log.splitlines()
+            m for m in (
+                re.sub(r"^\[[^\]]*\] ?", "", line).replace("\\x09", "\t")
+                for line in kernel_log.splitlines()
+            )
+            if not m.startswith("jitterentropy:")
         ]
         start = msgs.index("{")
         end = msgs.index("}", start)
