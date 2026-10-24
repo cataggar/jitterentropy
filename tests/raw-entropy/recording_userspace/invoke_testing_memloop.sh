@@ -60,7 +60,7 @@ initialization
 
 ################################################################################
 # Measure with deterministic memory access
-CFLAGS="-DJENT_TEST_MEASURE_RAW_MEMORY_ACCESS" make -s -f Makefile.hashtime
+build_tools -Draw-memory-access=true
 
 size=1
 while [ $size -le 20 ]
@@ -68,5 +68,3 @@ do
 	raw_entropy_ntg1_memloop $size "deterministic" --ntg1
 	size=$((size+1))
 done
-
-make -s -f Makefile.hashtime clean

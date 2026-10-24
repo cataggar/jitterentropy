@@ -20,7 +20,15 @@ NONIID_MEMLOOP_DATA="jent-raw-noise_memaccloop"
 NONIID_MEMLOOP_RESTART_DATA="jent-raw-noise-memaccloop-restart"
 IID_DATA="jent-conditioned.data"
 
-JENT_HASHTIME=${JENT_HASHTIME:-"./jitterentropy-hashtime"}
+ROOTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+BINDIR=${BINDIR:-"$ROOTDIR/zig-out/bin"}
+JENT_RNG=${JENT_RNG:-"$BINDIR/jitterentropy-rng"}
+JENT_HASHTIME=${JENT_HASHTIME:-"$BINDIR/jitterentropy-hashtime"}
+
+build_tools()
+{
+	(cd "$ROOTDIR" && zig build -Dtools=true "$@")
+}
 
 # Define the maximum memory size
 # 0 -> use default
@@ -43,15 +51,13 @@ initialization()
 			exit 1
 		fi
 	fi
-
-	trap "make -s -f Makefile.rng clean; make -s -f Makefile.hashtime clean; exit" 0 1 2 3 15
 }
 
 lfsroutput()
 {
 	echo "Obtaining $NUM_EVENTS blocks of output from Jitter RNG"
 
-	make -s -f Makefile.rng
+	build_tools
 
 	local cmdopts="--max-mem $MAX_MEMORY_SIZE"
 
@@ -60,16 +66,14 @@ lfsroutput()
 		cmdopts="$cmdopts --disable-internal-timer"
 	fi
 
-	./jitterentropy-rng $NUM_EVENTS $cmdopts > $OUTDIR/$IID_DATA
-
-	make -s -f Makefile.rng clean
+	$JENT_RNG $NUM_EVENTS $cmdopts > $OUTDIR/$IID_DATA
 }
 
 raw_entropy_restart()
 {
 	echo "Obtaining $NUM_RESTART raw entropy measurement with $NUM_EVENTS_RESTART restarts from Jitter RNG"
 
-	make -s -f Makefile.hashtime
+	build_tools
 
 	local cmdopts="--max-mem $MAX_MEMORY_SIZE $@"
 
@@ -79,15 +83,13 @@ raw_entropy_restart()
 	fi
 
 	$JENT_HASHTIME $NUM_EVENTS_RESTART $NUM_RESTART $OUTDIR/$NONIID_RESTART_DATA $cmdopts
-
-	make -s -f Makefile.hashtime clean
 }
 
 raw_entropy()
 {
 	echo "Obtaining $NUM_EVENTS raw entropy measurement from Jitter RNG"
 
-	make -s -f Makefile.hashtime
+	build_tools
 
 	local cmdopts="--max-mem $MAX_MEMORY_SIZE $@"
 
@@ -97,8 +99,6 @@ raw_entropy()
 	fi
 
 	$JENT_HASHTIME $NUM_EVENTS 1 $OUTDIR/$NONIID_DATA $cmdopts
-
-	make -s -f Makefile.hashtime clean
 }
 
 
@@ -106,7 +106,7 @@ raw_entropy_ntg1_hash()
 {
 	echo "Obtaining $NUM_EVENTS raw entropy measurement from Jitter RNG"
 
-	make -s -f Makefile.hashtime
+	build_tools
 
 	local cmdopts="--max-mem $MAX_MEMORY_SIZE --hashloop $@"
 
@@ -116,15 +116,13 @@ raw_entropy_ntg1_hash()
 	fi
 
 	$JENT_HASHTIME $NUM_EVENTS 1 $OUTDIR/$NONIID_HASH_DATA $cmdopts
-
-	make -s -f Makefile.hashtime clean
 }
 
 raw_entropy_ntg1_hash_restart()
 {
 	echo "Obtaining $NUM_RESTART raw entropy measurement with $NUM_EVENTS_RESTART restarts from Jitter RNG"
 
-	make -s -f Makefile.hashtime
+	build_tools
 
 	local cmdopts="--max-mem $MAX_MEMORY_SIZE --hashloop $@"
 
@@ -134,15 +132,13 @@ raw_entropy_ntg1_hash_restart()
 	fi
 
 	$JENT_HASHTIME $NUM_EVENTS_RESTART $NUM_RESTART $OUTDIR/$NONIID_HASH_RESTART_DATA $cmdopts
-
-	make -s -f Makefile.hashtime clean
 }
 
 raw_entropy_ntg1_memacc()
 {
 	echo "Obtaining $NUM_EVENTS raw entropy measurement from Jitter RNG"
 
-	make -s -f Makefile.hashtime
+	build_tools
 
 	local cmdopts="--max-mem $MAX_MEMORY_SIZE --memaccess $@"
 
@@ -152,15 +148,13 @@ raw_entropy_ntg1_memacc()
 	fi
 
 	$JENT_HASHTIME $NUM_EVENTS 1 $OUTDIR/$NONIID_MEMLOOP_DATA $cmdopts
-
-	make -s -f Makefile.hashtime clean
 }
 
 raw_entropy_ntg1_memacc_restart()
 {
 	echo "Obtaining $NUM_RESTART raw entropy measurement with $NUM_EVENTS_RESTART restarts from Jitter RNG"
 
-	make -s -f Makefile.hashtime
+	build_tools
 
 	local cmdopts="--max-mem $MAX_MEMORY_SIZE --memaccess $@"
 
@@ -170,6 +164,4 @@ raw_entropy_ntg1_memacc_restart()
 	fi
 
 	$JENT_HASHTIME $NUM_EVENTS_RESTART $NUM_RESTART $OUTDIR/$NONIID_MEMLOOP_RESTART_DATA $cmdopts
-
-	make -s -f Makefile.hashtime clean
 }

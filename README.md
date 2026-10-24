@@ -38,43 +38,40 @@ To use the Jitter RNG, the header file jitterentropy.h must be included.
 That header is the whole of the API: on the platforms whose linker takes a
 version script the shared library exports exactly the functions declared in
 it, listed in `version.lds`, and nothing else. The list is checked against the
-header when CMake configures, so the two cannot drift apart unnoticed there;
-the Makefile applies the list without that check.
+header when `build.zig` runs, so the two cannot drift apart unnoticed.
 
 # Build Instructions
 
-To generate the shared library `make` followed by `make install`, which
-installs the library, its header and the man pages of the library - on Linux
-jitter_rng.4 as well - below `$(PREFIX)/share/man`; `make install-static` adds
-the archive. The pkg-config file and the CMake package for
-`find_package(jitterentropy)` are installed by the CMake build only, which
-installs jitterentropy.3 alone of the man pages. `ENABLE_RECORDING=1` and, on
-Linux, `ENABLE_RNGD=1` add what the CMake options of the same name add, and the
-man page of each.
-
-Besides the Makefile based build system, CMake support is also provided.
-This may ease cross compiling or setting build options, like:
+To build and install with Zig (`build.zig`):
 
 ```sh
-cmake -S . -B build -DINTERNAL_TIMER=off -DEXTERNAL_CRYPTO=OPENSSL
-cmake --build build
+zig build                                    # static library + tools under zig-out/
+zig build -Dlinkage=dynamic                  # shared library + tools under zig-out/
+zig build -Drecording=true -Drngd=true       # add libjitterentropy-record and jitterentropy-rngd
+zig build -Dinternal-timer=false -Dexternal-crypto=openssl
+zig build test                               # run the unit, GCD, health, flags, fuzz, and link tests
 ```
-CMake may also be used on platforms like Windows or MacOS to ease compilation.
 
-Neither option is needed for BSI's functionality class NTG.1 (see
+`zig build` installs the library, `jitterentropy.h`, the pkg-config file, the
+tools, and the man pages below the install prefix (`zig-out` by default, or
+`--prefix <dir>`). `-Drecording=true` and, on Linux, `-Drngd=true` and
+`-Dkernel-lib=true` add the optional libraries and daemon, along with the man
+page of each.
+
+Neither `-Dinternal-timer=false` nor `-Dexternal-crypto` is needed for BSI's
+functionality class NTG.1 (see
 [AIS 20/31 NTG.1 Compliance](#ais-2031-ntg1-compliance)): the internal timer is
 refused at runtime for `JENT_NTG1` whatever the build, and secure memory -
 memory wiped on release - is what every build provides. The built-in
 allocator on Linux, FreeBSD, NetBSD, OpenBSD, macOS and Windows also locks the
 collector state, the extra that NTG.1 requires where the platform offers it;
 where the platform offers no memory lock, the requirement is satisfied without
-it, so `EXTERNAL_CRYPTO` is not needed for NTG.1 either.
+it, so `-Dexternal-crypto` is not needed for NTG.1 either.
 
 A build system of your own has to compile the library without optimization:
-`-O0` with GCC and Clang, as both provided ones do, where the timed sources -
+`-O0` with GCC and Clang, as `build.zig` does, where the timed sources -
 `src/jitterentropy-{base,health,noise,sha3,timer}.c` - refuse anything else,
-and `/Od` with MSVC, which the CMake build adds and nothing in the source can
-check. With MSVC,
+and `/Od` with MSVC. With MSVC,
 inlining has to stay off as well (`/Ob0`) - an explicit `/Ob1` or `/Ob2`,
 which the usual release configurations carry, still inlines into the timed
 loop - and `/GL` with `/LTCG` must not be used either, as it moves code
@@ -84,117 +81,64 @@ generation into the linker.
 
 | Option | Default | Effect |
 | --- | --- | --- |
-| `BUILD_SHARED_LIBS` | `OFF` | Build a shared library instead of a static one |
-| `INTERNAL_TIMER` | `ON` | Compile the thread based internal timer, used where no high-resolution timer is available |
-| `EXTERNAL_CRYPTO` | unset | Use an external libcrypto for hashing and secure memory: `AWSLC`, `OPENSSL` or `LIBGCRYPT` |
-| `STACK_PROTECTOR` | `ON` | Compile with the stack protector enabled |
-| `AARCH64_NSTIME_REGISTER` | unset | Name of the register `jent_get_nstime()` should read on AArch64 |
-| `ENABLE_SANITIZERS` | `OFF` | Address and undefined behavior sanitizers (development only) |
-| `ENABLE_THREAD_SANITIZER` | `OFF` | Thread sanitizer, which `unit-concurrency` is written for (development only; see `tests/README.md`) |
-| `ENABLE_COVERAGE` | `OFF` | Instrument for code coverage and add the `coverage` target (development only) |
-| `ENABLE_FUZZING` | `OFF` | Instrument for libFuzzer and build the coverage-guided harness under `tests/fuzz` (Clang only, development) |
-| `MOCK_TIMER` | `OFF` | Let the test programs that compile the library sources in replace the time source with a callback (`jent_set_mock_timer()`, declared in the internal `arch/jitterentropy-arch-timer.h` and not exported). An installed library offers a consumer nothing to call; `jent_status()` reports the build. Testing only - such a build produces no entropy of its own |
-| `ENABLE_TOOLS` | `ON` | Build and install the recording and validation tools, which live under `tests/` |
-| `ENABLE_RECORDING` | `OFF` | Also build and install `libjitterentropy-record`, shared or static as the library: the raw noise recording of `jitterentropy-record.h`, for recording where no tool can run (see `tests/raw-entropy/recording_library/README.md`). It exports nothing else and links beside `libjitterentropy`; not for production |
-| `ENABLE_RNGD` | `OFF` | Also build and install `jitterentropy-rngd`, the daemon feeding the Jitter RNG into the Linux `/dev/random`, with its systemd unit (Linux only, see `rngd/README.md`) |
-| `BUILD_TESTING` | `ON` | Build the test programs and register the CTest suite |
+| `-Dlinkage` | `static` | Build `static` or `dynamic` (shared) libraries |
+| `-Dinternal-timer` | `true` | Compile the thread based internal timer, used where no high-resolution timer is available |
+| `-Dexternal-crypto` | `none` | Use an external libcrypto for hashing and secure memory: `awslc`, `openssl`, `libgcrypt`, or `none` |
+| `-Dstack-protector` | `true` | Compile with the stack protector enabled |
+| `-Daarch64-nstime-register` | unset | Name of the register `jent_get_nstime()` should read on AArch64 |
+| `-Dsanitizers` | `false` | UndefinedBehaviorSanitizer (development only) |
+| `-Dtsan` | `false` | ThreadSanitizer, which `unit-concurrency` is written for (development only; see `tests/README.md`) |
+| `-Dcoverage` | `false` | Instrument for code coverage and add the `coverage` step (development only) |
+| `-Dfuzzing` | `false` | Instrument for fuzzing and build the fuzzing harnesses under `tests/fuzz` (development only) |
+| `-Dmock-timer` | `false` | Let the test programs that compile the library sources in replace the time source with a callback (`jent_set_mock_timer()`, declared in the internal `arch/jitterentropy-arch-timer.h` and not exported). An installed library offers a consumer nothing to call; `jent_status()` reports the build. Testing only - such a build produces no entropy of its own |
+| `-Dtools` | `true` | Build and install the recording and validation tools, which live under `tests/` |
+| `-Drecording` | `false` | Also build and install `libjitterentropy-record`, shared or static as the library: the raw noise recording of `jitterentropy-record.h`, for recording where no tool can run (see `tests/raw-entropy/recording_library/README.md`). It exports nothing else and links beside `libjitterentropy`; not for production |
+| `-Dkernel-lib` | `false` | Also build and install `libjitterentropy-kernel` and `jitter_rng` (Linux only) |
+| `-Drngd` | `false` | Also build and install `jitterentropy-rngd`, the daemon feeding the Jitter RNG into the Linux `/dev/random`, with its systemd unit (Linux only, see `rngd/README.md`) |
+| `-Defi` | `false` | Also build the UEFI baremetal test applications (`BOOTX64.EFI` and `BOOTAA64.EFI`) |
 
-The two are independent. `ENABLE_TOOLS` decides what is installed for a user
-to run - `jitterentropy-rng`, `jitterentropy-osr`, `jitterentropy-hashtime`,
-`jitterentropy-cpuinfo`, `jitterentropy-flags`, `extractlsb`, `gcd`,
-`jitterentropy-health` and, on Linux only, `getrawentropy` and the
-`jitterentropy-chardev-*` tools - and `BUILD_TESTING`, the name CMake projects
-conventionally use, decides what CTest is given. Four of the tools - `gcd`,
-`jitterentropy-health`, `jitterentropy-rng` and `jitterentropy-flags` - are
-also what the suite drives, so they are built whenever either option is on and
-installed only for the first:
+`-Dtools` decides what is installed for a user to run - `jitterentropy-rng`,
+`jitterentropy-osr`, `jitterentropy-hashtime`, `jitterentropy-cpuinfo`,
+`jitterentropy-flags`, `extractlsb`, `gcd`, `jitterentropy-health` and, on
+Linux only, `getrawentropy` and the `jitterentropy-chardev-*` tools:
 
 ```sh
-cmake -S . -B build -DENABLE_TOOLS=OFF    # the suite, nothing installed but the library
-cmake -S . -B build -DBUILD_TESTING=OFF   # the tools, no test programs built
-cmake -S . -B build -DENABLE_TOOLS=OFF -DBUILD_TESTING=OFF   # the library alone
+zig build -Dtools=false   # install only the library, header, pkg-config file, and man pages
 ```
-
-With both off the install tree is the library, its header, the pkg-config and
-CMake package files and the man page.
-
-Packaging commonly passes `-DBUILD_TESTING=OFF` on its own - the nixpkgs cmake
-hook does - and that is now exactly what it says: the tools keep being built
-and installed. The option is defined directly rather than through
-`include(CTest)`, which would also pull in the CDash submission machinery.
 
 ## Running the Test Suite
 
-The CMake build registers the test programs with CTest:
+`zig build test` builds and runs the deterministic test suite - the GCD self
+test, the unit tests for `src/` and `arch/`, the induced failure tests and
+replay vectors of the health tests, the flags tool tests, the standalone
+fuzzing harnesses (`tests/fuzz`), and the linking test (`tests/linking`):
 
 ```sh
-cmake -S . -B build
-cmake --build build
-ctest --test-dir build --output-on-failure
+zig build test
+zig build -Dlinkage=dynamic test
 ```
-
-The suite has two halves. The deterministic tests - the GCD self test, the unit
-tests for `src/` and `arch/`, and the induced failure tests of the health tests
-- compute over fixed inputs and answer the same everywhere. The entropy
-generation tests exercise the real noise source and can fail for reasons that
-are properties of the machine rather than defects in the code: a memory lock
-limit lower than the collector needs, or a startup whose health tests do not
-converge on the block size derived from this CPU's caches. They carry the
-`unreliable` label so that a gating run can leave them out:
-
-```sh
-ctest --test-dir build --output-on-failure -LE unreliable   # gating set
-ctest --test-dir build --output-on-failure -L unreliable    # only those
-```
-
-This is what the CI workflow gates on. Useful selections:
-
-```sh
-ctest --test-dir build -N              # list the tests without running them
-ctest --test-dir build -R unit-        # only the src/ and arch/ unit tests
-ctest --test-dir build -R health-      # only the induced failure tests
-ctest --test-dir build -R unit-sha3 -V # one test with its full output
-ctest --test-dir build -j "$(nproc)"   # in parallel
-```
-
-On a multi-configuration generator such as Visual Studio, name the
-configuration that was built: `ctest --test-dir build -C Release`.
-
-`tests/unit`, `tests/health` and `tests/gcd` also carry a standalone Makefile
-for trees without CMake: `make -C tests/unit check` and
-`make -C tests/health check`. The fuzzing harnesses (`tests/fuzz`), the
-character device tests (`tests/chardev`) and the linking tests
-(`tests/linking`) are built by CMake only.
 
 See `tests/README.md` for what the individual test programs cover.
 
 ## Code Coverage
 
-Configuring with `ENABLE_COVERAGE` instruments the build and adds a `coverage`
-target that runs the suite and writes a browsable HTML report to
-`<build>/coverage/index.html`. It needs either `gcovr` or `lcov` together with
-`genhtml`, and a separate build directory - the instrumentation forces `-O0`:
+Configuring with `-Dcoverage=true` instruments the build and adds a `coverage`
+step that runs the test suite and writes a browsable HTML report to
+`coverage/index.html` (using `gcovr` or `lcov`/`genhtml`):
 
 ```sh
-cmake -S . -B build-coverage -DENABLE_COVERAGE=ON
-cmake --build build-coverage
-cmake --build build-coverage --target coverage
+zig build -Dcoverage=true coverage
 ```
-
-The target runs the whole suite, the `unreliable` tests included, since they
-are what reaches the noise source and the health tests at runtime; their result
-is not propagated, so a machine that cannot run them still gets a report.
 
 ## Fuzzing
 
 The public API has a fuzzing harness under `tests/fuzz`. Its standalone runner
-is part of the CTest suite on every platform; the coverage-guided one needs
-Clang with the libFuzzer runtime:
+is part of `zig build test` on every platform; `-Dfuzzing=true` also builds
+and installs `fuzz-api` and `fuzz-health`:
 
 ```sh
-cmake -S . -B build-fuzz -DENABLE_FUZZING=ON -DENABLE_SANITIZERS=ON
-cmake --build build-fuzz
-./build-fuzz/tests/fuzz/fuzz-api -max_total_time=300 corpus/
+zig build -Dfuzzing=true -Dsanitizers=true
+./zig-out/bin/fuzz-api -max_total_time=300 corpus/
 ```
 
 See `tests/README.md` for what the harness drives and asserts.

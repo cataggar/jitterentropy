@@ -13,19 +13,10 @@ library. Here it links the library of this tree and shares its version;
 
 ## Build
 
-	cmake -S . -B build -DENABLE_RNGD=ON
-	cmake --build build
-	cmake --install build
+	zig build -Drngd=true --prefix /usr/local
 
-or, linking the library's archive into the daemon,
-
-	make ENABLE_RNGD=1
-	make install ENABLE_RNGD=1
-
-Both install the daemon to `sbin` and the systemd unit `jitterentropy.service`;
-`make install` installs its man page as well. The unit goes to
-`lib/systemd/system` below the prefix; `-DJENT_SYSTEMD_UNITDIR=<dir>`
-(`JENT_SYSTEMD_UNITDIR=<dir>` with make) names another directory.
+This installs the daemon to `sbin`, its man page, and the systemd unit
+`jitterentropy.service` to `lib/systemd/system` below the prefix.
 
 ## Systemd unit
 

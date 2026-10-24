@@ -4,12 +4,13 @@ name: Apple
 
 on:
   push:
-    branches: [ master ]
+    branches: [ zig, master ]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+  attestations: read
 
 # bash everywhere, Windows included, so the steps stay identical.
 defaults:
@@ -28,23 +29,31 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Configure
-        run: cmake -S . -B build -DBUILD_SHARED_LIBS=${{ matrix.shared }}
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Build
-        run: cmake --build build -j "$(sysctl -n hw.ncpu)"
+        run: |
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build -Dlinkage="$linkage"
 
       - name: Run tests
         run: |
-          ctest --test-dir build --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo --json > /dev/null
-          export DYLD_LIBRARY_PATH="$PWD/build:$DYLD_LIBRARY_PATH"
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build -Dlinkage="$linkage" test
+          ./zig-out/bin/jitterentropy-cpuinfo
+          ./zig-out/bin/jitterentropy-cpuinfo --json > /dev/null
+          export DYLD_LIBRARY_PATH="$PWD/zig-out/lib:${DYLD_LIBRARY_PATH:-}"
           for opt in "" "--all-caches" "--force-internal-timer"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null
           done
 
           for opt in "--force-fips" "--ntg1"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null ||
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null ||
               echo "::warning::jitterentropy-rng $opt failed on this machine"
           done

@@ -54,7 +54,8 @@ MAX_EVENTS=${MAX_EVENTS:-1000000}
 # Code only after this line -- do not change               #
 ############################################################
 
-EXTRACT=${EXTRACT:-"./extractlsb"}
+ROOTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+EXTRACT=${EXTRACT:-"$ROOTDIR/zig-out/bin/extractlsb"}
 
 if [ ! -d $ENTROPYDATA_DIR ]
 then
@@ -80,16 +81,10 @@ fi
 
 rm -f $RESULTS_DIR/*.txt $RESULTS_DIR/*.data  $RESULTS_DIR/*.log
 
-trap "if [ "$BUILD_EXTRACT" = "yes" ]; then make clean; fi" 0 1 2 3 15
-
-
-if [ "$BUILD_EXTRACT" = "yes" ]
+if [ "$BUILD_EXTRACT" = "yes" ] || [ ! -x "$EXTRACT" ]
 then
 	echo "Building $EXTRACT ..."
-	make clean
-	make
-else
-	make
+	(cd "$ROOTDIR" && zig build -Dtools=true)
 fi
 
 if [ ! -x $EXTRACT ]

@@ -35,7 +35,7 @@ raw_entropy_ntg1_hashloop()
 initialization
 
 ################################################################################
-make -s -f Makefile.hashtime
+build_tools
 
 size=0
 while [ $size -le 7 ]
@@ -43,5 +43,3 @@ do
 	raw_entropy_ntg1_hashloop $size --ntg1
 	size=$((size+1))
 done
-
-make -s -f Makefile.hashtime clean

@@ -57,7 +57,7 @@ raw_entropy_ntg1_hashloop()
 initialization
 
 ################################################################################
-make -s -f Makefile.hashtime
+build_tools
 
 size=0
 while [ $size -le 7 ]
@@ -66,20 +66,14 @@ do
 	size=$((size+1))
 done
 
-make -s -f Makefile.hashtime clean
-
 ################################################################################
 # Measure with random memory access
-make -s -f Makefile.hashtime
-
 size=1
 while [ $size -le 20 ]
 do
 	raw_entropy_ntg1_memloop $size "deterministic" --ntg1
 	size=$((size+1))
 done
-
-make -s -f Makefile.hashtime clean
 
 # add a marker that this is the common operation
 touch $OUTDIR/jent-commonop-testing

@@ -75,7 +75,7 @@ with subtest("restart recording, vanilla kernel"):
 
 machine.succeed(f"cp -r {src} /root/jent && chmod -R u+w /root/jent")
 # With RESULTS_DIR given, the caller builds extractlsb.
-run("validation-restart", "make")
+machine.succeed("cd /root/jent && ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache zig build -Dtools=true >&2")
 
 with subtest("runtime recording and validation, vanilla kernel"):
     # As recording_runtime_kernelspace/README.md. The boot buffer is off,

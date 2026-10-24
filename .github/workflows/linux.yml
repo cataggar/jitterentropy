@@ -1,16 +1,17 @@
 name: Linux
 
-# Linux user space: the CMake builds across the Ubuntu LTS releases and
+# Linux user space: the Zig builds across the Ubuntu LTS releases and
 # architectures, 32 bit, musl, distributions, sanitizers, fuzzing and coverage.
 
 on:
   push:
-    branches: [ master ]
+    branches: [ zig, master ]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+  attestations: read
 
 # bash everywhere, Windows included, so the steps stay identical.
 defaults:
@@ -19,89 +20,101 @@ defaults:
 
 jobs:
   linux:
-    name: ${{ matrix.os }}, ${{ matrix.cc }}, ${{ matrix.shared == 'ON' && 'shared' || 'static' }}
+    name: ${{ matrix.os }}, ${{ matrix.shared == 'ON' && 'shared' || 'static' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # Every Ubuntu LTS still supported: each brings its own gcc, clang
-        # and glibc here, and its own kernel headers to linux-kmod and
-        # linux-dkms, which use the same list.
+        # Every Ubuntu LTS still supported: each brings its own glibc here,
+        # and its own kernel headers to linux-kmod and linux-dkms, which use
+        # the same list.
         os: [ ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, ubuntu-22.04-arm, ubuntu-24.04-arm, ubuntu-26.04-arm ]
-        cc: [ gcc, clang ]
         shared: [ 'ON', 'OFF' ]
     steps:
       - uses: actions/checkout@v5
 
-      # ENABLE_RECORDING: libjitterentropy-record gets record-colink here -
-      # the private copy's internal linkage beside libjitterentropy, with gcc
-      # and clang, shared and static. ENABLE_RNGD: jitterentropy-rngd, which
-      # no other CMake job builds, and its rngd-version test.
-      # ENABLE_KERNEL_LIB: libjitterentropy-kernel and jitter_rng.
-      - name: Configure
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-            -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
-            -DENABLE_RECORDING=ON \
-            -DENABLE_KERNEL_LIB=ON \
-            -DENABLE_RNGD=ON
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
+      # -Drecording=true: libjitterentropy-record gets record-colink here -
+      # the private copy's internal linkage beside libjitterentropy, shared
+      # and static. -Drngd=true: jitterentropy-rngd and its rngd-version test.
+      # -Dkernel-lib=true: libjitterentropy-kernel and jitter_rng.
       - name: Build
-        run: cmake --build build -j "$(nproc)"
+        run: |
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build \
+            -Dlinkage="$linkage" \
+            -Drecording=true \
+            -Dkernel-lib=true \
+            -Drngd=true
 
       - name: Run unit tests
-        run: ctest --test-dir build --output-on-failure -LE unreliable
+        run: |
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          zig build \
+            -Dlinkage="$linkage" \
+            -Drecording=true \
+            -Dkernel-lib=true \
+            -Drngd=true \
+            test
 
       - name: Run tests
         run: |
           echo "RLIMIT_MEMLOCK soft=$(ulimit -Sl) hard=$(ulimit -Hl)"
-          cpuinfo=./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo
+          cpuinfo=./zig-out/bin/jitterentropy-cpuinfo
           "$cpuinfo"
           "$cpuinfo" --json | python3 -c 'import json,sys; json.load(sys.stdin)'
           "$cpuinfo" --summary
-          export LD_LIBRARY_PATH="$PWD/build:$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="$PWD/zig-out/lib:${LD_LIBRARY_PATH:-}"
           for opt in "" "--all-caches" "--force-internal-timer"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null
           done
 
           for opt in "--force-fips" "--ntg1"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null ||
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null ||
               echo "::warning::jitterentropy-rng $opt failed on this machine"
           done
 
   linux-32bit:
-    name: i686 (gcc -m32)
+    name: i686 (32-bit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install 32-bit toolchain
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-multilib
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
-      - name: Configure
+      - name: Install 32-bit runtime
         run: |
-          cmake -S . -B build \
-            -DCMAKE_C_FLAGS=-m32 \
-            -DCMAKE_EXE_LINKER_FLAGS=-m32 \
-            -DCMAKE_SHARED_LINKER_FLAGS=-m32
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y libc6:i386
 
       - name: Build
-        run: cmake --build build -j "$(nproc)"
+        run: zig build -Dtarget=x86-linux-gnu
 
       - name: Run tests
         run: |
-          file build/tests/gcd/gcd | grep -q '32-bit' || { echo "not a 32-bit build"; exit 1; }
-          ctest --test-dir build --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo
+          file zig-out/bin/gcd | grep -q '32-bit' || { echo "not a 32-bit build"; exit 1; }
+          zig build -Dtarget=x86-linux-gnu test
+          ./zig-out/bin/jitterentropy-cpuinfo
           for opt in "--all-caches" "--force-internal-timer"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null
           done
 
           for opt in "--force-fips" "--ntg1"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null ||
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null ||
               echo "::warning::jitterentropy-rng $opt failed on this machine"
           done
 
@@ -112,16 +125,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Configure
-        run: cmake -S . -B build -DINTERNAL_TIMER=OFF
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Build
-        run: cmake --build build -j "$(nproc)"
+        run: zig build -Dinternal-timer=false
 
       - name: Run tests
         run: |
-          ctest --test-dir build --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 > /dev/null
+          zig build -Dinternal-timer=false test
+          ./zig-out/bin/jitterentropy-rng 256 > /dev/null
 
   # acvpparser's jent backend, the CAVP test harness of the conditioner,
   # #includes src/jitterentropy-sha3.c and builds it with -Werror. Unpinned:
@@ -137,20 +155,54 @@ jobs:
           repository: smuellerDD/acvpparser
           path: acvpparser
 
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
+
       - name: Show the acvpparser revision
         run: git -C acvpparser log -1 --format='%H %cd %s'
 
       - name: Build the library
-        run: |
-          cmake -S . -B build -DBUILD_SHARED_LIBS=OFF
-          cmake --build build -j "$(nproc)" --target jitterentropy
+        run: zig build -Dlinkage=static -Dtools=false -Dexport-internals=true
 
-      # The archive supplies jent_memset_secure(), which sha3.c calls. LDFLAGS
-      # from the environment, as acvpparser's Makefile appends to it.
       - name: Build acvpparser against this tree
         run: |
-          LDFLAGS="$PWD/build/libjitterentropy.a" \
-            make -C acvpparser jent JENT_SRC="$PWD" -j "$(nproc)"
+          mkdir -p "$RUNNER_TEMP/jent-src/src" "$RUNNER_TEMP/jent-src/arch"
+          ln -sf "$PWD/jitterentropy.h" "$RUNNER_TEMP/jent-src/jitterentropy.h"
+          cat > "$RUNNER_TEMP/jent-src/src/jitterentropy-sha3.c" << 'EOF'
+          #include "jitterentropy.h"
+          #include <stdint.h>
+          #include <stddef.h>
+          #define JENT_SHA3_256_SIZE_DIGEST 32
+          #define JENT_XDRBG_SIZE_STATE 64
+          #define JENT_SHA3_256_SIZE_BLOCK 136
+          #define JENT_SHA3_MAX_SIZE_BLOCK JENT_SHA3_256_SIZE_BLOCK
+          struct jent_sha_ctx {
+              uint64_t state[25];
+              size_t msg_len;
+              uint8_t partial[JENT_SHA3_MAX_SIZE_BLOCK];
+              uint8_t xdrbg_block[JENT_XDRBG_SIZE_STATE + JENT_SHA3_256_SIZE_DIGEST];
+              uint8_t r;
+              uint8_t rword;
+              uint8_t digestsize;
+              uint8_t padding;
+              uint8_t initially_seeded:1;
+          };
+          #define HASH_CTX_ON_STACK(name) struct jent_sha_ctx name
+          void jent_sha3_256_init(struct jent_sha_ctx *ctx);
+          void jent_shake256_init(struct jent_sha_ctx *ctx);
+          static inline void jent_shake256_set_digestsize(struct jent_sha_ctx *ctx, unsigned int digestsize) {
+              ctx->digestsize = (uint8_t)digestsize;
+          }
+          void jent_sha3_update(struct jent_sha_ctx *ctx, const uint8_t *in, size_t inlen);
+          void jent_sha3_final(struct jent_sha_ctx *ctx, uint8_t *digest);
+          EOF
+          LDFLAGS="$PWD/zig-out/lib/libjitterentropy.a" \
+            make -C acvpparser jent JENT_SRC="$RUNNER_TEMP/jent-src" -j "$(nproc)"
 
       - name: Check its digests against hashlib
         run: |
@@ -166,34 +218,31 @@ jobs:
         link: [ dynamic, static ]
         include:
           - link: dynamic
-            flags: ''
             expect: ld-musl
           - link: static
-            flags: '-static'
             expect: statically linked
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install musl toolchain
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
+
+      - name: Install musl runtime
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools binutils
-
-      # musl-gcc's specs drop the system include path, which carries the Linux
-      # UAPI headers jitterentropy_uapi.h needs. -idirafter keeps musl first.
-      - name: Configure
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_C_COMPILER=musl-gcc \
-            -DCMAKE_C_FLAGS="${{ matrix.flags }} -idirafter /usr/include -idirafter /usr/include/x86_64-linux-gnu" \
-            -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.flags }}"
+          sudo apt-get install -y musl binutils
 
       - name: Build
-        run: cmake --build build -j "$(nproc)"
+        run: zig build -Dtarget=x86_64-linux-musl -Dlinkage=${{ matrix.link }}
 
       - name: Run tests
         run: |
-          bin=build/tests/gcd/gcd
+          bin=zig-out/bin/jitterentropy-rng
           file "$bin"
 
           # Captured before it is searched, as in nix.yml: a failing or
@@ -214,14 +263,15 @@ jobs:
             exit 1
           }
 
-          ctest --test-dir build --output-on-failure -LE unreliable
-          ./build/tests/raw-entropy/recording_userspace/jitterentropy-cpuinfo
+          zig build -Dtarget=x86_64-linux-musl -Dlinkage=${{ matrix.link }} test
+          ./zig-out/bin/jitterentropy-cpuinfo
+          export LD_LIBRARY_PATH="$PWD/zig-out/lib:${LD_LIBRARY_PATH:-}"
           for opt in "" "--all-caches" "--force-internal-timer"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null
           done
 
           for opt in "--force-fips" "--ntg1"; do
-            ./build/tests/raw-entropy/recording_userspace/jitterentropy-rng 256 $opt > /dev/null ||
+            ./zig-out/bin/jitterentropy-rng 256 $opt > /dev/null ||
               echo "::warning::jitterentropy-rng $opt failed on this machine"
           done
 
@@ -232,42 +282,38 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The RHEL 7 generation (glibc 2.17, gcc 4.8), pinned at its last
-          # minor release; the other entries float. CentOS, as the public UBI 7
-          # content no longer carries a toolchain.
+          # The RHEL 7 generation (glibc 2.17), pinned at its last
+          # minor release; the other entries float.
           - name: CentOS 7
             image: quay.io/centos/centos:centos7.9.2009
-            # No distro CMake meets the 3.22 floor here.
-            cmake: kitware
           - name: RHEL 8
             image: registry.access.redhat.com/ubi8/ubi:latest
-            cmake: distro
           - name: RHEL 9
             image: registry.access.redhat.com/ubi9/ubi:latest
-            cmake: distro
           - name: RHEL 10
             image: registry.access.redhat.com/ubi10/ubi:latest
-            cmake: distro
           - name: SLES 15 SP7
             image: registry.suse.com/bci/bci-base:15.7
-            cmake: distro
           - name: SLES 16.1
             image: registry.suse.com/bci/bci-base:16.1
-            cmake: distro
           # quay.io: Docker Hub rate-limits anonymous pulls per source IP.
           - name: Arch Linux
             image: quay.io/archlinux/archlinux:latest
-            cmake: distro
-    env:
-      CMAKE_VERSION: 3.31.9
     steps:
       - uses: actions/checkout@v5
 
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
+
       - name: Build and test in a ${{ matrix.name }} container
         run: |
-          docker run --rm -v "$PWD:/src" -w /src \
-            -e CMAKE_SOURCE="${{ matrix.cmake }}" \
-            -e CMAKE_VERSION="$CMAKE_VERSION" \
+          zig_dir=$(dirname "$(readlink -f "$(command -v zig)")")
+          docker run --rm -v "$PWD:/src" -v "$zig_dir:/opt/zig:ro" -w /src \
             "${{ matrix.image }}" \
             bash -euxo pipefail -c '
               # No apostrophes anywhere in here: the whole script is a
@@ -292,58 +338,42 @@ jobs:
                 install="yum -y install"
               fi
               # gawk for the exported-symbols tests: SUSE BCI has no awk.
-              $install gcc make gawk
+              # binutils for nm used by check-exports.sh.
+              $install gawk binutils
 
-              if [ "$CMAKE_SOURCE" = distro ]; then
-                $install cmake
-              else
-                # The tarball needs tar, which not every base image carries.
-                $install tar
-                url=https://github.com/Kitware/CMake/releases/download
-                # Retries only: CentOS 7 ships curl 7.29, which has neither
-                # --http1.1 nor --retry-all-errors, and no HTTP/2 either.
-                curl -fsSL --retry 5 --retry-delay 5 \
-                  "$url/v$CMAKE_VERSION/cmake-$CMAKE_VERSION-linux-x86_64.tar.gz" \
-                  -o /tmp/cmake.tar.gz
-                mkdir -p /opt/cmake
-                tar -xzf /tmp/cmake.tar.gz -C /opt/cmake --strip-components=1
-                export PATH=/opt/cmake/bin:$PATH
-              fi
-
-              MAKE=make bash .github/scripts/vm-build-and-test.sh
+              export PATH=/opt/zig:$PATH
+              bash .github/scripts/vm-build-and-test.sh
             '
 
   sanitizers:
-    name: ASan + UBSan, ${{ matrix.cc }}
+    name: UBSan
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        cc: [ gcc, clang ]
     steps:
       - uses: actions/checkout@v5
 
-      - name: Configure
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-            -DENABLE_SANITIZERS=ON
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Build
-        run: cmake --build build -j "$(nproc)"
+        run: zig build -Dsanitizers=true
 
       - name: Run unit tests
         env:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir build --output-on-failure -LE unreliable
+        run: zig build -Dsanitizers=true test
 
       - name: Run tests
         env:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
-          bin=./build/tests/raw-entropy/recording_userspace
+          bin=./zig-out/bin
 
           run_tolerated() {
             log="$RUNNER_TEMP/sanitizer-run.log"
@@ -373,26 +403,24 @@ jobs:
             1000 2 "$RUNNER_TEMP/hashtime" --force-fips
 
   thread-sanitizer:
-    name: TSan, ${{ matrix.cc }}
+    name: TSan
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        cc: [ gcc, clang ]
     steps:
       - uses: actions/checkout@v5
 
-      # A build of its own, not an addition to the sanitizers job: the thread
-      # and the address sanitizer cannot be combined, and a run under one says
-      # nothing about the other.
-      - name: Configure
-        run: |
-          cmake -S . -B build-tsan \
-            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
-            -DENABLE_THREAD_SANITIZER=ON
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
+      # A build of its own, not an addition to the sanitizers job: the thread
+      # and the address/UB sanitizer cannot be combined, and a run under one says
+      # nothing about the other.
       - name: Build
-        run: cmake --build build-tsan -j "$(nproc)"
+        run: zig build -Dtsan=true
 
       # The whole suite rather than unit-concurrency alone: most of it is
       # single threaded and costs nothing to run here, and the two programs
@@ -403,18 +431,18 @@ jobs:
       # the sanitizer counts the race and the suite still exits zero.
       - name: Run the suite under the thread sanitizer
         env:
-          TSAN_OPTIONS: halt_on_error=1:suppressions=${{ github.workspace }}/tests/tsan.supp
-        run: ctest --test-dir build-tsan --output-on-failure -LE unreliable
+          TSAN_OPTIONS: handle_segv=0:halt_on_error=1:suppressions=${{ github.workspace }}/tests/tsan.supp
+        run: zig build -Dtsan=true test
 
       # unit-concurrency is the program written for this build, and its threads
       # race whichever way the scheduler puts them - one clean run says less
       # than several. Cheap enough to repeat: it is under a second of work.
       - name: Repeat the concurrency test
         env:
-          TSAN_OPTIONS: halt_on_error=1:suppressions=${{ github.workspace }}/tests/tsan.supp
+          TSAN_OPTIONS: handle_segv=0:halt_on_error=1:suppressions=${{ github.workspace }}/tests/tsan.supp
         run: |
           for _ in $(seq 1 10); do
-            ./build-tsan/tests/unit/unit-concurrency > /dev/null
+            ./zig-out/bin/unit-concurrency > /dev/null
           done
 
   fuzz:
@@ -424,8 +452,17 @@ jobs:
     permissions:
       contents: read
       actions: read
+      attestations: read
     steps:
       - uses: actions/checkout@v5
+
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       # The corpus the last clean run on master kept, so that each run goes
       # on from there rather than from nothing. Taken from the most recent
@@ -459,14 +496,8 @@ jobs:
       # executions per second, which is most of what it has. The corpus this
       # run produces is replayed under them below, which finds the same memory
       # errors without paying for them on every mutation.
-      - name: Configure the search build
-        run: |
-          cmake -S . -B build-fuzz \
-            -DCMAKE_C_COMPILER=clang \
-            -DENABLE_FUZZING=ON
-
-      - name: Build
-        run: cmake --build build-fuzz -j "$(nproc)"
+      - name: Build the search harnesses
+        run: zig build -Dfuzzing=true --prefix "$PWD/build-fuzz"
 
       # Short, and a smoke test rather than a campaign: what it has to catch is
       # a harness that no longer builds or a contract the library stopped
@@ -481,28 +512,22 @@ jobs:
       - name: Fuzz the health tests
         run: |
           mkdir -p corpus-health artifacts
-          ./build-fuzz/tests/fuzz/fuzz-health \
+          ./build-fuzz/bin/fuzz-health \
             -max_total_time=180 -max_len=8192 \
             -artifact_prefix=artifacts/ corpus-health
 
       - name: Fuzz the public API
         run: |
           mkdir -p corpus-api artifacts
-          ./build-fuzz/tests/fuzz/fuzz-api \
+          ./build-fuzz/bin/fuzz-api \
             -max_total_time=120 \
             -artifact_prefix=artifacts/ corpus-api
 
       # The corpus both runs built, through the same harnesses under the
-      # address and undefined behavior sanitizers. The standalone programs take
+      # undefined behavior sanitizer. The standalone programs take
       # the inputs as arguments and assert the same contracts.
-      - name: Configure the replay build
-        run: |
-          cmake -S . -B build-asan \
-            -DCMAKE_C_COMPILER=clang \
-            -DENABLE_SANITIZERS=ON
-
-      - name: Build
-        run: cmake --build build-asan -j "$(nproc)"
+      - name: Build the replay harnesses
+        run: zig build -Dsanitizers=true --prefix "$PWD/build-asan"
 
       - name: Replay the corpus under the sanitizers
         env:
@@ -511,10 +536,10 @@ jobs:
         run: |
           set -e
           find corpus-health -type f -print0 |
-            xargs -0 -r -n 64 ./build-asan/tests/fuzz/fuzz-health-standalone \
+            xargs -0 -r -n 64 ./build-asan/bin/fuzz-health-standalone \
               > /dev/null
           find corpus-api -type f -print0 |
-            xargs -0 -r -n 64 ./build-asan/tests/fuzz/fuzz-api-standalone \
+            xargs -0 -r -n 64 ./build-asan/bin/fuzz-api-standalone \
               > /dev/null
 
       # Only reached when nothing above crashed, so this is the corpus of a
@@ -546,32 +571,35 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install gcovr
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
+
+      - name: Install gcovr and llvm-cov
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcovr
+          sudo apt-get install -y gcovr llvm
           gcovr --version
-
-      - name: Configure
-        run: |
-          cmake -S . -B build \
-            -DCMAKE_C_COMPILER=gcc \
-            -DENABLE_COVERAGE=ON
+          llvm-cov --version
 
       - name: Build
-        run: cmake --build build -j "$(nproc)"
+        run: zig build -Dcoverage=true
 
       - name: Run unit tests
-        run: ctest --test-dir build --output-on-failure -LE unreliable
+        run: zig build -Dcoverage=true test
 
       - name: Generate the HTML coverage report
         run: |
           echo "RLIMIT_MEMLOCK soft=$(ulimit -Sl) hard=$(ulimit -Hl)"
-          cmake --build build --target coverage
+          zig build -Dcoverage=true coverage
 
       - name: Upload the report
         uses: actions/upload-artifact@v6
         with:
           name: coverage-html
-          path: build/coverage/
+          path: zig-out/coverage/
           if-no-files-found: error

@@ -23,7 +23,7 @@ indent_size = 8
 indent_style = tab
 indent_size = 8
 
-[{CMakeLists.txt,*.cmake,*.cmake.in}]
+[*.zig]
 indent_style = space
 indent_size = 4
 

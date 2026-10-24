@@ -25,7 +25,7 @@ in
       # need the module: this is the only place they meet a real one.
       environment.systemPackages = [
         ((toolsFor pkgs).overrideAttrs (old: {
-          cmakeFlags = (old.cmakeFlags or [ ]) ++ [ "-DENABLE_KERNEL_LIB=ON" ];
+          zigFlags = (old.zigFlags or [ ]) ++ [ "-Dkernel-lib=true" ];
         }))
       ] ++ (with pkgs; [
         fx
@@ -165,10 +165,14 @@ in
 
         kernel_log = machine.succeed("dmesg")
         # Strip the timestamp prefix and undo dmesg's escaping of the
-        # tab indentation.
+        # tab indentation; ignore periodic selftest lines that may
+        # interleave from the background workqueue on another vCPU.
         msgs = [
-            re.sub(r"^\[[^\]]*\] ?", "", line).replace("\\x09", "\t")
-            for line in kernel_log.splitlines()
+            m for m in (
+                re.sub(r"^\[[^\]]*\] ?", "", line).replace("\\x09", "\t")
+                for line in kernel_log.splitlines()
+            )
+            if not m.startswith("jitterentropy:")
         ]
         start = msgs.index("{")
         end = msgs.index("}", start)
@@ -216,7 +220,7 @@ in
             "getrawentropy --samples 1 --status | jq -e .version"
         ))
 
-        # The CMake-built userspace tools are on PATH.
+        # The Zig-built userspace tools are on PATH.
         for tool in ("jitterentropy-rng", "jitterentropy-osr",
                      "jitterentropy-hashtime", "jitterentropy-cpuinfo",
                      "gcd", "extractlsb", "getrawentropy",

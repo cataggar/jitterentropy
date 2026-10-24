@@ -10,15 +10,10 @@
 # of this Kbuild (i.e. linux_kernel/), set in Kbuild:
 #   $(jent_srcdir)        -> linux_kernel/  (kernel interface headers)
 #   $(jent_srcdir)/..     -> project root   (jitterentropy.h, arch/*.h)
-#   $(jent_srcdir)/../src -> src/           (library internal headers)
-#
-# The kernel interfaces get no src/: they use the library through
-# jitterentropy.h alone, and the test interface the recording library's
-# jitterentropy-record.h.
+# The C shim uses the public library API through jitterentropy.h; the Zig
+# object imports the library internals directly.
 jitter_rng_c_args = -DLINUX_KERNEL					       \
 		    -I$(jent_srcdir) -I$(jent_srcdir)/..
-jitter_rng_lib_c_args = $(jitter_rng_c_args) -I$(jent_srcdir)/../src
-jent_recorddir = tests/raw-entropy/recording_library
 
 # Built in tree, crypto/Makefile enters this directory through
 # "obj-$(CONFIG_CRYPTO_JITTERENTROPY) += jitterentropy-library/linux_kernel/"
@@ -80,90 +75,102 @@ endif
 
 obj-$(CONFIG_EXTERNAL_JITTERENTROPY)  := jitter_rng.o
 
-jitter_rng-y += ../src/jitterentropy-base.o				       \
-		../src/jitterentropy-gcd.o				       \
-		../src/jitterentropy-health.o				       \
-		../src/jitterentropy-noise.o				       \
-		../src/jitterentropy-sha3.o				       \
-		../src/jitterentropy-status.o				       \
-		../src/jitterentropy-timer.o				       \
-		../src/jitterentropy-uuid.o				       \
-		../arch/jitterentropy-arch-atomic.o			       \
-		../arch/jitterentropy-arch-memory.o			       \
-		../arch/jitterentropy-arch-timer.o			       \
-		../arch/jitterentropy-arch-sched.o			       \
-		../arch/jitterentropy-arch-cache.o			       \
-		../arch/jitterentropy-arch-fips.o			       \
-		../arch/jitterentropy-arch-ncpu.o			       \
-		../arch/jitterentropy-arch-random.o			       \
-		jitterentropy_mod.o					       \
-		jitterentropy_ioctl.o					       \
-		jitterentropy_proc.o					       \
-		jitterentropy_selftest.o				       \
-		jitterentropy_status.o
+jitter_rng-y += jitterentropy_zig.o jitterentropy_kbuild_shim.o
 
-jitter_rng_c_args_zero = -O0 $(jitter_rng_lib_c_args)
+CFLAGS_jitterentropy_kbuild_shim.o = $(jitter_rng_c_args)
+OBJECT_FILES_NON_STANDARD := y
 
-CFLAGS_../src/jitterentropy-base.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-gcd.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-health.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-noise.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-status.o = $(jitter_rng_lib_c_args)
-# The UUID is formatting, not measurement: it needs no -O0.
-CFLAGS_../src/jitterentropy-uuid.o = $(jitter_rng_lib_c_args)
-CFLAGS_../src/jitterentropy-sha3.o = $(jitter_rng_c_args_zero)
-CFLAGS_../src/jitterentropy-timer.o = $(jitter_rng_c_args_zero)
-CFLAGS_../arch/jitterentropy-arch-atomic.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-memory.o = $(jitter_rng_lib_c_args)
-# Deliberately not $(jitter_rng_c_args_zero), unlike the entropy core above.
-# On architectures without a counter instruction this object reads the clock
-# through <linux/timex.h>, and kernel headers are only meant to build
-# optimized. The -O0 requirement covers the measured loops in the entropy
-# core, not the counter read, so this costs a call per timestamp and nothing
-# else.
-CFLAGS_../arch/jitterentropy-arch-timer.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-sched.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-cache.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-fips.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-ncpu.o = $(jitter_rng_lib_c_args)
-CFLAGS_../arch/jitterentropy-arch-random.o = $(jitter_rng_lib_c_args)
-CFLAGS_jitterentropy_mod.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_ioctl.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_proc.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_selftest.o = $(jitter_rng_c_args)
-CFLAGS_jitterentropy_status.o = $(jitter_rng_c_args)
+ifneq ($(srctree),)
+$(obj)/jitter_rng.o: private objtool-enabled :=
+# Zig target mapping for the architectures supported by the library. Keep the
+# object freestanding: Linux headers and macro-only interfaces stay in the C
+# shim above.
+ifeq ($(ARCH),x86)
+ifeq ($(CONFIG_X86_32),y)
+jent_zig_target := x86-freestanding-none
+jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
+else
+jent_zig_target := x86_64-freestanding-none
+jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
+jent_zig_model := -mcmodel kernel
+endif
+else ifeq ($(ARCH),x86_64)
+jent_zig_target := x86_64-freestanding-none
+jent_zig_cpu := baseline-mmx-sse-sse2-avx+soft_float
+jent_zig_model := -mcmodel kernel
+else ifeq ($(ARCH),arm64)
+jent_zig_target := aarch64-freestanding-none
+jent_zig_cpu := generic-fp_armv8-neon
+else ifeq ($(ARCH),arm)
+jent_zig_target := arm-freestanding-none
+jent_zig_cpu := generic
+else ifeq ($(ARCH),riscv)
+jent_zig_target := riscv64-freestanding-none
+jent_zig_cpu := generic
+else ifeq ($(ARCH),s390)
+jent_zig_target := s390x-freestanding-none
+jent_zig_cpu := baseline
+else ifeq ($(ARCH),powerpc)
+jent_zig_target := powerpc64le-freestanding-none
+jent_zig_cpu := baseline
+else ifeq ($(ARCH),sparc)
+jent_zig_target := sparc64-freestanding-none
+jent_zig_cpu := baseline
+else ifeq ($(ARCH),loongarch)
+jent_zig_target := loongarch64-freestanding-none
+jent_zig_cpu := baseline
+else
+$(error unsupported ARCH '$(ARCH)' for the Jitter RNG Zig core)
+endif
 
-################### Kernel Crypto API Interface Compilation ####################
+jent_zig_sources := $(wildcard $(jent_srcdir)/../src/*.zig)		       \
+		    $(wildcard $(jent_srcdir)/../src/arch/*.zig)		       \
+		    $(jent_srcdir)/kmod_core.zig				       \
+		    $(jent_srcdir)/kernel_build_options.zig
 
-jitter_rng-$(jent_kcapi)						       \
-	+= jitterentropy_kcapi.o
+jent_zig_global_cache := $(if $(ZIG_GLOBAL_CACHE_DIR),$(ZIG_GLOBAL_CACHE_DIR),$(obj)/.zig-cache)
+jent_zig_local_cache := $(jent_zig_global_cache)/local
+jent_zig_tmp := $(if $(TMPDIR),$(TMPDIR),$(obj)/.zig-cache/tmp)
 
-CFLAGS_jitterentropy_kcapi.o = $(jitter_rng_c_args)
+quiet_cmd_jent_zig = ZIG     $@
+      cmd_jent_zig = mkdir -p "$(jent_zig_tmp)" "$(jent_zig_local_cache)" && \
+		     ZIG_GLOBAL_CACHE_DIR="$(jent_zig_global_cache)"	       \
+		     ZIG_LOCAL_CACHE_DIR="$(jent_zig_local_cache)"	       \
+		     TMPDIR="$(jent_zig_tmp)"				       \
+		     printf '%s\n'					       \
+		       'pub const internal_timer = false;'		       \
+		       'pub const mock_timer = false;'			       \
+		       'pub const raw_memory_access = false;'		       \
+		       'pub const stack_protector = false;'		       \
+		       'pub const linkage = @import("std").builtin.LinkMode.static;' \
+		       'pub const external_crypto = enum { none, awslc, openssl, libgcrypt }.none;' \
+		       'pub const aarch64_nstime_register: ?[]const u8 = null;' \
+		       'pub const is_linux_kernel = true;'		       \
+		       'pub const kcapi = $(if $(filter y,$(jent_kcapi)),true,false);' \
+		       'pub const chardev = $(if $(filter y,$(CONFIG_EXTERNAL_JITTERENTROPY_CHARDEV)),true,false);' \
+		       'pub const hwrng = $(if $(filter y,$(jent_hwrng)),true,false);' \
+		       'pub const testinterface = $(if $(filter y,$(CONFIG_EXTERNAL_JITTERENTROPY_TESTINTERFACE)),true,false);' \
+		       'pub const builtin_jitterentropy = $(if $(filter y,$(CONFIG_BUILTIN_JITTERENTROPY)),true,false);' \
+		       > "$(jent_zig_local_cache)/kernel_build_options.zig" && \
+		     ZIG_GLOBAL_CACHE_DIR="$(jent_zig_global_cache)"	       \
+		     ZIG_LOCAL_CACHE_DIR="$(jent_zig_local_cache)"	       \
+		     TMPDIR="$(jent_zig_tmp)"				       \
+		     zig build-obj -fllvm -fno-stack-check -mno-red-zone       \
+		       -target $(jent_zig_target)			       \
+		       -mcpu '$(jent_zig_cpu)' $(jent_zig_model) -O Debug       \
+		       -fno-PIC -fno-PIE -fno-stack-protector		       \
+		       -fno-omit-frame-pointer -ffunction-sections		       \
+		       -fdata-sections -femit-bin="$@"			       \
+		       --dep build_options --dep kmod_core		       \
+		       -Mroot="$(jent_srcdir)/../src/kernel_root.zig"	       \
+		       -Mbuild_options="$(jent_srcdir)/kernel_build_options.zig" \
+		       -mno-red-zone -fno-stack-check -fno-PIC -fno-PIE	       \
+		       -fno-stack-protector -fno-omit-frame-pointer	       \
+		       --dep kmod_build_options				       \
+		       -Mkmod_core="$(jent_srcdir)/kmod_core.zig"	       \
+		       -Mkmod_build_options="$(jent_zig_local_cache)/kernel_build_options.zig"
 
-######################### Character Device Compilation #########################
-
-jitter_rng-$(CONFIG_EXTERNAL_JITTERENTROPY_CHARDEV)			       \
-	+= jitterentropy_chardev.o
-
-CFLAGS_jitterentropy_chardev.o = $(jitter_rng_c_args)
-
-############################# HW RNG Compilation ###############################
-
-jitter_rng-$(jent_hwrng)						       \
-	+= jitterentropy_hwrng.o
-
-CFLAGS_jitterentropy_hwrng.o = $(jitter_rng_c_args)
-
-############################ Test Code Compilation #############################
-
-# The recording without a file of the recording library, which the test
-# interface records through. No -O0: it runs between the measurements, not in
-# them, as the test interface's own loop does.
-jitter_rng-$(CONFIG_EXTERNAL_JITTERENTROPY_TESTINTERFACE)		       \
-	+= jitterentropy_testing.o					       \
-	   ../$(jent_recorddir)/jitterentropy-record-session.o
-
-CFLAGS_jitterentropy_testing.o = $(jitter_rng_c_args)			       \
-				 -I$(jent_srcdir)/../$(jent_recorddir)
-CFLAGS_../$(jent_recorddir)/jitterentropy-record-session.o =		       \
-	$(jitter_rng_lib_c_args)
+targets += jitterentropy_zig.o
+$(obj)/jitterentropy_zig.o: $(jent_zig_sources) FORCE
+	$(call if_changed,jent_zig)
+endif

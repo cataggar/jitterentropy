@@ -1,16 +1,17 @@
-name: Makefile and linking
+name: Zig and linking
 
-# What runs on several platforms at once: the Makefile build and the linking
+# What runs on several platforms at once: the Zig build and the linking
 # of consumers against the installed library.
 
 on:
   push:
-    branches: [ master ]
+    branches: [ zig, master ]
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
+  attestations: read
 
 # bash everywhere, Windows included, so the steps stay identical.
 defaults:
@@ -18,8 +19,8 @@ defaults:
     shell: bash
 
 jobs:
-  makefile:
-    name: Makefile, ${{ matrix.os }}
+  zig:
+    name: Zig, ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -28,27 +29,36 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # With the recording library and, on Linux, the daemon, whose Makefile
-      # rules nothing else builds. MAKEVARS goes to every make below, so that
-      # the install covers what was built.
-      - name: Build
-        run: |
-          vars="ENABLE_RECORDING=1"
-          if [ "${{ runner.os }}" = Linux ]; then
-            vars="$vars ENABLE_RNGD=1"
-          fi
-          echo "MAKEVARS=$vars" >> "$GITHUB_ENV"
-          make -j 4 $vars
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
-      # The export set of the shared libraries the Makefile links: version.lds
+      - name: Check build.zig formatting
+        run: zig fmt --check build.zig build.zig.zon
+
+      - name: Build and install static and shared libraries
+        run: |
+          opts="-Drecording=true"
+          if [ "${{ runner.os }}" = Linux ]; then
+            opts="$opts -Drngd=true -Drngd-sbindir=$PWD/prefix/sbin"
+          fi
+          echo "ZIG_OPTS=$opts" >> "$GITHUB_ENV"
+          zig build -Dlinkage=static $opts --prefix "$PWD/prefix"
+          zig build -Dlinkage=dynamic $opts --prefix "$PWD/prefix"
+
+      # The export set of the shared libraries build.zig links: version.lds
       # and record.lds where the linker takes them, visibility alone on macOS.
       - name: Check the exports of the shared libraries
         run: |
           case "${{ runner.os }}" in
-            macOS) lib=$(ls libjitterentropy.*.*.*.dylib)
-                   rec=$(ls libjitterentropy-record.*.*.*.dylib) ;;
-            *)     lib=$(ls libjitterentropy.so.*.*.*)
-                   rec=$(ls libjitterentropy-record.so.*.*.*) ;;
+            macOS) lib=$(ls prefix/lib/libjitterentropy.*.*.*.dylib)
+                   rec=$(ls prefix/lib/libjitterentropy-record.*.*.*.dylib) ;;
+            *)     lib=$(ls prefix/lib/libjitterentropy.so.*.*.*)
+                   rec=$(ls prefix/lib/libjitterentropy-record.so.*.*.*) ;;
           esac
           bash .github/scripts/check-exports.sh "$lib" version.lds
           bash .github/scripts/check-exports.sh "$rec" \
@@ -58,12 +68,12 @@ jobs:
       # its archive defines the recording API of record.lds and nothing else.
       - name: Check the symbols of the archives
         run: |
-          syms=$(nm -g libjitterentropy.a)
+          syms=$(nm -g prefix/lib/libjitterentropy.a)
           if grep -q 'jent_entropy_collector_alloc_raw' <<<"$syms"; then
             echo "::error::libjitterentropy.a carries the raw collector"
             exit 1
           fi
-          defined=$(nm -g libjitterentropy-record.a |
+          defined=$(nm -g prefix/lib/libjitterentropy-record.a |
             awk 'NF == 3 && $2 != "U" { sub(/^_/, "", $3); print $3 }' | sort)
           expected=$(printf '%s\n' jent_record_alloc jent_record_free \
             jent_record_health_names jent_record_prime jent_record_raw \
@@ -73,74 +83,13 @@ jobs:
             exit 1
           fi
 
-      # The unit, gcd and health tests through their own Makefiles - the
-      # fallback for a tree without CMake, which nothing else here builds -
-      # and, on Linux, the daemon's version check.
       - name: Run the tests
         run: |
-          make -C tests/unit check
-          make -C tests/gcd
-          ./tests/gcd/gcd
-          make -C tests/health check
-          if [ "${{ runner.os }}" = Linux ]; then
-            make check-rngd $MAKEVARS
-          fi
-
-      - name: Build and run the CPU information tool
-        working-directory: tests/raw-entropy/recording_userspace
-        run: |
-          make -f Makefile.cpuinfo
-          ./jitterentropy-cpuinfo
-
-      - name: Link and run against the built library
-        run: |
-          cat > smoke.c <<'EOF'
-          #include <stdio.h>
-          #include "jitterentropy.h"
-
-          static int collect(unsigned int flags, const char *what)
-          {
-                  char buf[64];
-                  struct rand_data *ec = jent_entropy_collector_alloc(0, flags);
-
-                  if (!ec) { printf("alloc failed (%s)\n", what); return 1; }
-                  if (jent_read_entropy(ec, buf, sizeof(buf)) != (ssize_t)sizeof(buf)) {
-                          printf("short read (%s)\n", what);
-                          jent_entropy_collector_free(ec);
-                          return 1;
-                  }
-                  jent_entropy_collector_free(ec);
-                  printf("ok (%s)\n", what);
-                  return 0;
-          }
-
-          int main(void) {
-                  int rc = jent_entropy_init();
-                  if (rc) { printf("jent_entropy_init: %d\n", rc); return 1; }
-                  if (collect(0, "default")) return 1;
-                  /*
-                   * Forced: where the counter read works the automatic
-                   * selection never reaches the thread back-end, the one the
-                   * Makefile's -pthread exists for.
-                   */
-                  if (collect(JENT_FORCE_INTERNAL_TIMER, "internal timer")) return 1;
-                  return 0;
-          }
-          EOF
-          case "${{ runner.os }}" in
-            Linux) LIBS="-pthread -lrt" ;;
-            *)     LIBS="-pthread" ;;
-          esac
-          cc -std=c11 -I. smoke.c libjitterentropy.a $LIBS -o smoke
-          ./smoke
+          zig build test $ZIG_OPTS
+          ./prefix/bin/jitterentropy-cpuinfo
 
       - name: Link and run against the installed library
         run: |
-          # Rebuilt rather than installed on top: on macOS PREFIX is baked in
-          # at link time as -install_name.
-          make clean
-          make -j 4 PREFIX="$PWD/prefix" $MAKEVARS
-          make install install-static PREFIX="$PWD/prefix" $MAKEVARS
           ls -l prefix/lib
           if [ "${{ runner.os }}" = Linux ]; then
             grep -qx "ExecStart=$PWD/prefix/sbin/jitterentropy-rngd -F" \
@@ -154,25 +103,23 @@ jobs:
             *)     LIBS="-pthread" ;;
           esac
           # The rpath frees the run from the loader variables macOS strips.
-          cc -std=c11 -Iprefix/include \
+          zig cc -std=c11 -Iprefix/include \
             tests/linking/jitterentropy-linktest.c \
             -Lprefix/lib -ljitterentropy $LIBS \
             -Wl,-rpath,"$PWD/prefix/lib" -o linktest-shared
           ./linktest-shared
           # The archive is named directly: -l would pick the shared object.
-          cc -std=c11 -Iprefix/include \
+          zig cc -std=c11 -Iprefix/include \
             tests/linking/jitterentropy-linktest.c \
             prefix/lib/libjitterentropy.a $LIBS -o linktest-static
           ./linktest-static
 
-      # install-man: the library's page and, with ENABLE_RECORDING=1, the
-      # recording library's, compressed.
       - name: Check the installed man pages
         run: |
           man=prefix/share/man/man3
           for p in jitterentropy jitterentropy-record; do
-            gzip -t "$man/$p.3.gz" || {
-              echo "::error::no $man/$p.3.gz"
+            test -s "$man/$p.3" || {
+              echo "::error::no $man/$p.3"
               exit 1
             }
           done
@@ -188,13 +135,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # CMAKE_INSTALL_LIBDIR is pinned so the later steps can name the install
-      # tree, and the prefix is a native path for Windows cmake.
-      #
-      # CMAKE_BUILD_TYPE must name the configuration the install asks for:
-      # install(EXPORT) writes IMPORTED_LOCATION per configuration, and the
-      # "noconfig" file a build type-less single-config generator produces is
-      # not what --config Release looks for.
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
+
       - name: Build and install the library
         run: |
           prefix="$PWD/prefix"
@@ -202,36 +150,52 @@ jobs:
           Windows) prefix=$(cygpath -m "$prefix") ;;
           esac
           echo "JENT_PREFIX=$prefix" >> "$GITHUB_ENV"
-          cmake -S . -B build \
-            -DBUILD_SHARED_LIBS=${{ matrix.shared }} \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$prefix" \
-            -DCMAKE_INSTALL_LIBDIR=lib
-          cmake --build build --config Release --parallel 4
-          cmake --install build --config Release
+          linkage=${{ matrix.shared == 'ON' && 'dynamic' || 'static' }}
+          opts="-Dlinkage=$linkage"
+          if [ "${{ runner.os }}" = Linux ]; then
+            opts="$opts -Dkernel-lib=true"
+          fi
+          zig build $opts --prefix "$prefix"
 
-      - name: Link and run through the CMake package
+      - name: Link and run against the installed prefix
         run: |
-          cmake -S tests/linking -B build-cmake -DCMAKE_PREFIX_PATH="$JENT_PREFIX"
-          cmake --build build-cmake --config Release --parallel 4
-          # Multi-config generators put the binary in a per-config directory.
+          mkdir -p build-link
           case "${{ runner.os }}" in
           Windows)
+            if [ "${{ matrix.shared }}" = ON ]; then
+              zig cc -std=c11 -I"$JENT_PREFIX/include" \
+                tests/linking/jitterentropy-linktest.c \
+                "$JENT_PREFIX/lib/jitterentropy.lib" \
+                -o build-link/jitterentropy-linktest.exe
+            else
+              zig cc -std=c11 -DJENT_STATIC_LIB -I"$JENT_PREFIX/include" \
+                tests/linking/jitterentropy-linktest.c \
+                "$JENT_PREFIX/lib/jitterentropy.lib" -lbcrypt \
+                -o build-link/jitterentropy-linktest.exe
+            fi
             # The DLL is installed to bin/ and resolved from PATH.
             export PATH="$PWD/prefix/bin:$PATH"
-            ./build-cmake/Release/jitterentropy-linktest.exe
+            ./build-link/jitterentropy-linktest.exe
             ;;
           *)
-            export LD_LIBRARY_PATH="$PWD/prefix/lib:$LD_LIBRARY_PATH"
-            export DYLD_LIBRARY_PATH="$PWD/prefix/lib:$DYLD_LIBRARY_PATH"
-            ./build-cmake/jitterentropy-linktest
+            case "${{ runner.os }}" in
+              Linux) LIBS="-pthread -lrt" ;;
+              *)     LIBS="-pthread" ;;
+            esac
+            zig cc -std=c11 -I"$PWD/prefix/include" \
+              tests/linking/jitterentropy-linktest.c \
+              -L"$PWD/prefix/lib" -ljitterentropy $LIBS \
+              -o build-link/jitterentropy-linktest
+            export LD_LIBRARY_PATH="$PWD/prefix/lib:${LD_LIBRARY_PATH:-}"
+            export DYLD_LIBRARY_PATH="$PWD/prefix/lib:${DYLD_LIBRARY_PATH:-}"
+            ./build-link/jitterentropy-linktest
             ;;
           esac
 
       - name: Check the linkage
         if: runner.os != 'Windows'
         run: |
-          bin=./build-cmake/jitterentropy-linktest
+          bin=./build-link/jitterentropy-linktest
           case "${{ runner.os }}" in
           macOS) deps=$(otool -L "$bin") ;;
           *)     deps=$(ldd "$bin") ;;

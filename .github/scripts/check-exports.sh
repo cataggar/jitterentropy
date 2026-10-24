@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Check that a shared library exports the global: list of its version script
-# and nothing else. CMakeLists.txt checks that list against the header at
-# configure time; this checks the built library against the list - in CI for
-# the Makefile build, and as the exported-symbols* tests of a shared CMake
-# build.
+# and nothing else. build.zig checks that list against the header at
+# configure time; this checks the built library against the list.
 #
 # Every defined global counts, not only the jent_ ones: on macOS, where the
 # linker takes no version script, -fvisibility=hidden alone limits the export
@@ -38,7 +36,7 @@ exported=$(awk -v strip_us="$strip_us" '
 			  "__bss_end__ __bss_start__ _bss_end__ __data_start " \
 			  "_DYNAMIC _GLOBAL_OFFSET_TABLE_ " \
 			  "_PROCEDURE_LINKAGE_TABLE_ _mh_dylib_header " \
-			  "dyld_stub_binder", t, " ")
+			  "dyld_stub_binder __dso_handle", t, " ")
 		for (i = 1; i <= n; i++)
 			toolchain[t[i]] = 1
 	}

@@ -18,8 +18,8 @@
 # seeing it late is one more turn of a loop that is already unbounded.
 #
 # Everything else the library shares between threads is a latch or a memo and
-# goes through arch/jitterentropy-arch-atomic.h. Those are not suppressed, and
-# tests/unit/unit-concurrency.c exists to race them: a report from it is a
+# goes through src/arch/atomic.zig. Those are not suppressed, and
+# tests/unit/unit_concurrency.zig exists to race them: a report from it is a
 # regression, which is the whole point of keeping this list to the two entries
 # below.
 race:jent_notime_sample_timer
