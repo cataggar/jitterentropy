@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  attestations: read
 
 # bash everywhere, Windows included, so the steps stay identical.
 defaults:
@@ -32,9 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       # -Drecording=true: libjitterentropy-record gets record-colink here -
       # the private copy's internal linkage beside libjitterentropy, shared
@@ -82,9 +87,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Install 32-bit runtime
         run: |
@@ -116,9 +125,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Build
         run: zig build -Dinternal-timer=false
@@ -142,9 +155,13 @@ jobs:
           repository: smuellerDD/acvpparser
           path: acvpparser
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Show the acvpparser revision
         run: git -C acvpparser log -1 --format='%H %cd %s'
@@ -207,9 +224,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Install musl runtime
         run: |
@@ -281,14 +302,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
-          use-cache: false
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Build and test in a ${{ matrix.name }} container
         run: |
-          zig_dir=$(dirname "$(command -v zig)")
+          zig_dir=$(dirname "$(readlink -f "$(command -v zig)")")
           docker run --rm -v "$PWD:/src" -v "$zig_dir:/opt/zig:ro" -w /src \
             "${{ matrix.image }}" \
             bash -euxo pipefail -c '
@@ -327,9 +351,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Build
         run: zig build -Dsanitizers=true
@@ -380,9 +408,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       # A build of its own, not an addition to the sanitizers job: the thread
       # and the address/UB sanitizer cannot be combined, and a run under one says
@@ -420,12 +452,17 @@ jobs:
     permissions:
       contents: read
       actions: read
+      attestations: read
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       # The corpus the last clean run on master kept, so that each run goes
       # on from there rather than from nothing. Taken from the most recent
@@ -534,9 +571,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: mlugg/setup-zig@v2
+      - name: Install Zig via ghr
+        uses: cataggar/ghr/actions/install@v0.9.0
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
-          version: 0.17.0
+          tools: |
+            cataggar/zig@v0.17.0 RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U
 
       - name: Install gcovr and llvm-cov
         run: |
